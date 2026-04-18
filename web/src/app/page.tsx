@@ -9,6 +9,7 @@ import type { StrategyId } from '@/domain/models'
 import { STRATEGY_NAME, TEMPLATES } from '@/domain'
 import type { ProjectSummary, StoredProject } from '@/adapters'
 import { listProjects, upsertProject } from '@/adapters'
+import { HomeVenueSimulator } from '@/ui/components/HomeVenueSimulator'
 
 const uuid = () => {
   const v = globalThis.crypto?.randomUUID?.()
@@ -22,6 +23,8 @@ export default function Home() {
   const [name, setName] = useState('')
   const [templateId, setTemplateId] = useState(TEMPLATES[0]?.id ?? '')
   const [strategyId, setStrategyId] = useState<StrategyId>('leader_visit')
+  const [generatedTemplateId, setGeneratedTemplateId] = useState<string | undefined>(undefined)
+  const [generateSeed, setGenerateSeed] = useState<number | undefined>(undefined)
 
   const templates = useMemo(() => TEMPLATES, [])
 
@@ -43,6 +46,12 @@ export default function Home() {
     upsertProject(project)
     refresh()
     router.push(`/project/${project.id}`)
+  }
+
+  const generateVenue = () => {
+    if (!templateId) return
+    setGeneratedTemplateId(templateId)
+    setGenerateSeed(Date.now())
   }
 
   return (
@@ -83,9 +92,14 @@ export default function Home() {
               </select>
             </label>
           </div>
-          <button className={styles.primaryBtn} onClick={createProject} disabled={!templateId}>
-            进入编辑
-          </button>
+          <div className={styles.actionRow}>
+            <button className={styles.primaryBtn} onClick={createProject} disabled={!templateId}>
+              进入编辑
+            </button>
+            <button className={styles.secondaryBtn} onClick={generateVenue} disabled={!templateId}>
+              生成场地
+            </button>
+          </div>
         </section>
 
         <section className={styles.card}>
@@ -109,6 +123,10 @@ export default function Home() {
               ))}
             </ul>
           )}
+        </section>
+
+        <section className={`${styles.card} ${styles.fullWidth}`}>
+          <HomeVenueSimulator generatedTemplateId={generatedTemplateId} seed={generateSeed} />
         </section>
       </main>
     </div>

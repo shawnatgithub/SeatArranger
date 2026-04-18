@@ -95,6 +95,16 @@
   border-color: #d7d7d7;
 }
 
+.actionRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
 .muted {
   color: #777;
   font-size: 13px;
