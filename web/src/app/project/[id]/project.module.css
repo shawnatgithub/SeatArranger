@@ -3,6 +3,7 @@
   padding: 16px;
   background: #f6f7f9;
   font-family: var(--font-geist-sans);
+  color: #111;
 }
 
 .header {
@@ -79,10 +80,11 @@
 .canvasWrap {
   border: 1px solid #e6e6e6;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
   background: #fff;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
+  max-height: 70vh;
 }
 
 .hint {
@@ -269,4 +271,3 @@
     grid-template-columns: 1fr;
   }
 }
-

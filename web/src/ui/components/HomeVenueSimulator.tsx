@@ -85,8 +85,8 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
           marginTop: 12,
           borderRadius: 12,
           border: '1px solid #e6e6e6',
-          overflow: 'hidden',
-          width: 'fit-content',
+          overflow: 'auto',
+          width: '100%',
           maxWidth: '100%',
           background: '#fff',
         }}
@@ -96,4 +96,3 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
     </div>
   )
 }
-
