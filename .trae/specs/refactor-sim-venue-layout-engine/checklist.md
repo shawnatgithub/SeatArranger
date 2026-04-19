@@ -1,0 +1,8 @@
+- [ ] 已完成现状架构评估，并明确“锚点拖拽→自动重排”需要 Layout Engine 支撑
+- [ ] world 坐标系以场地中心为 (0,0)，网格以中心对称分布；渲染与吸附一致
+- [ ] 参数化模板可生成 Scene（room/anchors/elements/seats/zones）
+- [ ] 门/窗/主席台/屏幕等锚点可拖拽，释放后触发布局重算
+- [ ] 座椅/桌子/人员图元拖拽后可网格吸附且持久化不丢失
+- [ ] 模板选项/场景策略切换后，可生成正确模拟现场；策略影响排座输出/解释
+- [ ] HowSeatsArraged.md 已生成且与实现一致
+- [ ] npm run typecheck / npm run lint / npm run build 通过
