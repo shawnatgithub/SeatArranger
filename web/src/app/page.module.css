@@ -37,6 +37,7 @@
   border-radius: 12px;
   padding: 16px;
   color: #111;
+  color-scheme: light;
 }
 
 .card h2 {
@@ -70,6 +71,8 @@
   border: 1px solid #d7d7d7;
   padding: 0 10px;
   outline: none;
+  color: #111;
+  background: #fff;
 }
 
 .primaryBtn,
@@ -94,6 +97,7 @@
 .secondaryBtn {
   background: #fff;
   border-color: #d7d7d7;
+  color: #111;
 }
 
 .actionRow {

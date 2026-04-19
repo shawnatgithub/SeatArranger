@@ -36,7 +36,7 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
   }, [generatedTemplateId])
 
   const seatOverrides = useMemo<SeatOverrides | undefined>(() => {
-    if (!template || !seed) return undefined
+    if (!template || seed === undefined) return undefined
     const maxJitter = 18
     const out: SeatOverrides = {}
     for (const s of template.seats) {
@@ -51,7 +51,7 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
     return out
   }, [seed, template])
 
-  if (!generatedTemplateId || !template || !seed) {
+  if (!generatedTemplateId || !template || seed === undefined) {
     return (
       <div>
         <div style={{ fontWeight: 650, fontSize: 14 }}>模拟现场</div>
