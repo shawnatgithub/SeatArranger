@@ -1,0 +1,5 @@
+- [ ] Chrome DevTools MCP 可成功连接并选中页面（list_pages/select_page 可用）
+- [ ] 点击“进入编辑”后会创建项目并跳转到 `/project/[id]`
+- [ ] 点击“生成场地”后“模拟现场”进入已生成状态并显示 Konva 平面图
+- [ ] 点击“生成场地”不创建项目、不写入项目列表、不跳转
+- [ ] npm run typecheck / npm run lint / npm run build 通过
