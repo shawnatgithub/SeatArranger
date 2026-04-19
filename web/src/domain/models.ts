@@ -8,7 +8,7 @@ export type StrategyId = 'leader_visit' | 'customer_visit' | 'government_recepti
 
 export type SeatZone = 'guest' | 'host' | 'neutral'
 
-export type VenueElementType = 'table' | 'entrance' | 'screen' | 'hostSeatAnchor'
+export type VenueElementType = 'table' | 'entrance' | 'screen' | 'window' | 'hostSeatAnchor'
 
 export type VenueElement = {
   id: Id
@@ -74,4 +74,3 @@ export type ArrangeOutput = {
   errors: string[]
   mainSeatId?: Id
 }
-

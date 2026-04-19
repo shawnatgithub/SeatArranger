@@ -25,6 +25,15 @@ const applySeatOverrides = (template: VenueTemplate, seatOverrides?: StoredProje
   return { ...template, seats }
 }
 
+const applyElementOverrides = (template: VenueTemplate, elementOverrides?: StoredProject['elementOverrides']): VenueTemplate => {
+  if (!elementOverrides) return template
+  const elements = template.elements.map((el) => {
+    const ov = elementOverrides[el.id]
+    return ov ? { ...el, x: ov.x, y: ov.y } : el
+  })
+  return { ...template, elements }
+}
+
 export default function ProjectPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -44,7 +53,7 @@ export default function ProjectPage() {
 
   const template = useMemo(() => {
     if (!project) return undefined
-    return applySeatOverrides(getTemplate(project.templateId), project.seatOverrides)
+    return applyElementOverrides(applySeatOverrides(getTemplate(project.templateId), project.seatOverrides), project.elementOverrides)
   }, [project])
 
   const assignmentView = useMemo(() => {
@@ -109,6 +118,18 @@ export default function ProjectPage() {
     const seatOverrides = { ...(project.seatOverrides ?? {}) }
     seatOverrides[seatId] = { x: pos.x, y: pos.y }
     persist({ ...project, seatOverrides })
+  }
+
+  const onElementDragEnd = (elementId: string, pos: { x: number; y: number }) => {
+    const elementOverrides = { ...(project.elementOverrides ?? {}) }
+    elementOverrides[elementId] = { x: pos.x, y: pos.y }
+    persist({ ...project, elementOverrides })
+  }
+
+  const onSeatLabelDragEnd = (seatId: string, offset: { dx: number; dy: number }) => {
+    const seatLabelOverrides = { ...(project.seatLabelOverrides ?? {}) }
+    seatLabelOverrides[seatId] = { dx: offset.dx, dy: offset.dy }
+    persist({ ...project, seatLabelOverrides })
   }
 
   const addPerson = (p: Omit<StoredProject['people'][number], 'id'>) => {
@@ -211,6 +232,8 @@ export default function ProjectPage() {
               <VenueCanvas
                 template={template}
                 seatOverrides={project.seatOverrides}
+                elementOverrides={project.elementOverrides}
+                seatLabelOverrides={project.seatLabelOverrides}
                 assignments={assignmentView}
                 mainSeatId={arranged?.mainSeatId ?? project.userMainSeatId}
                 editable={editSeats}
@@ -220,11 +243,13 @@ export default function ProjectPage() {
                   if (!editSeats) toggleSeatLock(id)
                 }}
                 onSeatDragEnd={onSeatDragEnd}
+                onElementDragEnd={onElementDragEnd}
+                onSeatLabelDragEnd={onSeatLabelDragEnd}
               />
             </div>
             <div className={styles.hint}>
               {editSeats
-                ? '拖拽座位以调整位置（自动保存）'
+                ? '拖拽桌椅/座位/姓名标签以调整位置（自动保存且网格对齐）'
                 : '点击座位：若该座位已有排座结果，则切换锁定/解锁'}
             </div>
 
@@ -267,7 +292,15 @@ export default function ProjectPage() {
                   value={project.templateId}
                   onChange={(e) => {
                     const templateId = e.target.value
-                    persist({ ...project, templateId, seatOverrides: undefined, lockedAssignments: [], userMainSeatId: undefined })
+                    persist({
+                      ...project,
+                      templateId,
+                      seatOverrides: undefined,
+                      elementOverrides: undefined,
+                      seatLabelOverrides: undefined,
+                      lockedAssignments: [],
+                      userMainSeatId: undefined,
+                    })
                     setArranged(null)
                   }}
                 >

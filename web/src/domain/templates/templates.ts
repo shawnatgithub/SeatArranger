@@ -36,8 +36,6 @@ export const TEMPLATES: VenueTemplate[] = [
     canvasHeight,
     elements: [
       element('table-1', 'table', 250, 200, 400, 200),
-      element('screen-1', 'screen', 375, 40, 150, 20),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 180, 1, 1),
     ],
     seats: [
@@ -64,8 +62,6 @@ export const TEMPLATES: VenueTemplate[] = [
     canvasWidth,
     canvasHeight,
     elements: [
-      element('screen-1', 'screen', 350, 40, 200, 20),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 140, 1, 1),
     ],
     seats: [
@@ -86,8 +82,6 @@ export const TEMPLATES: VenueTemplate[] = [
       element('table-1', 'table', 250, 180, 400, 60),
       element('table-2', 'table', 250, 180, 60, 260),
       element('table-3', 'table', 590, 180, 60, 260),
-      element('screen-1', 'screen', 350, 40, 200, 20),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 160, 1, 1),
     ],
     seats: [
@@ -116,8 +110,6 @@ export const TEMPLATES: VenueTemplate[] = [
       element('table-left', 'table', 260, 170, 60, 260),
       element('table-right', 'table', 580, 170, 60, 260),
       element('table-bottom', 'table', 260, 370, 380, 60),
-      element('screen-1', 'screen', 350, 40, 200, 20),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 150, 1, 1),
     ],
     seats: [
@@ -141,8 +133,6 @@ export const TEMPLATES: VenueTemplate[] = [
     canvasHeight,
     elements: [
       element('table-stage', 'table', 200, 90, 500, 70),
-      element('screen-1', 'screen', 350, 40, 200, 20),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 70, 1, 1),
     ],
     seats: [
@@ -171,7 +161,6 @@ export const TEMPLATES: VenueTemplate[] = [
     canvasHeight,
     elements: [
       element('table-1', 'table', 300, 170, 300, 300),
-      element('entrance-1', 'entrance', 425, 560, 50, 20, 0),
       element('anchor-1', 'hostSeatAnchor', 450, 150, 1, 1),
     ],
     seats: [
@@ -191,4 +180,3 @@ export const TEMPLATES: VenueTemplate[] = [
 
 export const getTemplateById = (id: string): VenueTemplate | undefined =>
   TEMPLATES.find((t) => t.id === id)
-

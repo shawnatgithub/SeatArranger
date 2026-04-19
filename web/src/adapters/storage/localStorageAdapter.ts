@@ -9,6 +9,8 @@ export type StoredProject = {
   people: Person[]
   lockedAssignments: Assignment[]
   seatOverrides?: Record<string, { x: number; y: number }>
+  elementOverrides?: Record<string, { x: number; y: number }>
+  seatLabelOverrides?: Record<string, { dx: number; dy: number }>
   updatedAt: number
   createdAt: number
 }
@@ -60,4 +62,3 @@ export const deleteProject = (id: string) => {
   const projects = loadAll().filter((p) => p.id !== id)
   saveAll(projects)
 }
-
