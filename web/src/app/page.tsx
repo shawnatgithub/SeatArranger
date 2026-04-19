@@ -138,7 +138,12 @@ export default function Home() {
         </section>
 
         <section className={`${styles.card} ${styles.fullWidth}`}>
-          <HomeVenueSimulator generatedTemplateId={generatedTemplateId} strategyId={generatedStrategyId} seed={generateSeed} />
+          <HomeVenueSimulator
+            key={`${generatedTemplateId ?? 'none'}:${generateSeed ?? 'none'}`}
+            generatedTemplateId={generatedTemplateId}
+            strategyId={generatedStrategyId}
+            seed={generateSeed}
+          />
         </section>
       </main>
     </div>

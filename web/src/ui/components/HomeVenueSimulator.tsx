@@ -1,26 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
-import { STRATEGY_NAME, getDefaultRoom, getTemplateById } from '@/domain'
-import type { SeatOverrides } from '@/ui/components/VenueCanvas'
+import { STRATEGY_NAME, getTemplateById } from '@/domain'
+import type { ElementOverrides, SeatLabelOverrides, SeatOverrides } from '@/ui/components/VenueCanvas'
 import { VenueCanvas } from '@/ui/components/VenueCanvas'
-
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
-
-const hashString = (s: string) => {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-
-const rand01 = (seed: number) => {
-  const x = Math.sin(seed) * 10000
-  return x - Math.floor(x)
-}
 
 export type HomeVenueSimulatorProps = {
   generatedTemplateId?: string
@@ -36,22 +20,9 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
     return getTemplateById(generatedTemplateId)
   }, [generatedTemplateId])
 
-  const seatOverrides = useMemo<SeatOverrides | undefined>(() => {
-    if (!template || seed === undefined) return undefined
-    const maxJitter = 18
-    const room = getDefaultRoom(template, 60)
-    const out: SeatOverrides = {}
-    for (const s of template.seats) {
-      const base = seed + hashString(s.id)
-      const dx = (rand01(base) - 0.5) * 2 * maxJitter
-      const dy = (rand01(base + 1) - 0.5) * 2 * maxJitter
-      out[s.id] = {
-        x: clamp(s.x + dx, room.x + 18, room.x + room.width - 18),
-        y: clamp(s.y + dy, room.y + 18, room.y + room.height - 18),
-      }
-    }
-    return out
-  }, [seed, template])
+  const [seatOverrides, setSeatOverrides] = useState<SeatOverrides | undefined>(undefined)
+  const [elementOverrides, setElementOverrides] = useState<ElementOverrides | undefined>(undefined)
+  const [seatLabelOverrides, setSeatLabelOverrides] = useState<SeatLabelOverrides | undefined>(undefined)
 
   if (!generatedTemplateId || !template || seed === undefined) {
     return (
@@ -84,6 +55,7 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
       <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>
         已基于模板“{template.name}”生成{strategyId ? ` · ${STRATEGY_NAME[strategyId] ?? strategyId}` : ''}
       </div>
+      <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>拖拽桌子/门窗/座椅进行微调（网格吸附；仅本页预览，不写入项目）</div>
       <div
         style={{
           marginTop: 12,
@@ -96,7 +68,16 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
           background: '#fff',
         }}
       >
-        <VenueCanvas template={template} seatOverrides={seatOverrides} editable={false} />
+        <VenueCanvas
+          template={template}
+          seatOverrides={seatOverrides}
+          elementOverrides={elementOverrides}
+          seatLabelOverrides={seatLabelOverrides}
+          editable
+          onSeatDragEnd={(id, pos) => setSeatOverrides((prev) => ({ ...(prev ?? {}), [id]: pos }))}
+          onElementDragEnd={(id, pos) => setElementOverrides((prev) => ({ ...(prev ?? {}), [id]: pos }))}
+          onSeatLabelDragEnd={(id, pos) => setSeatLabelOverrides((prev) => ({ ...(prev ?? {}), [id]: pos }))}
+        />
       </div>
     </div>
   )

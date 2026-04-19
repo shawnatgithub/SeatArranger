@@ -4,11 +4,13 @@ const canvasWidth = 900
 const canvasHeight = 600
 const centerX = canvasWidth / 2
 const centerY = canvasHeight / 2
+const gridSize = 20
+const snap = (v: number) => Math.round(v / gridSize) * gridSize
 
 const seat = (id: string, x: number, y: number, zone?: Seat['zone']): Seat => ({
   id,
-  x: x - centerX,
-  y: y - centerY,
+  x: snap(x - centerX),
+  y: snap(y - centerY),
   zone,
 })
 
@@ -23,10 +25,10 @@ const element = (
 ): VenueElement => ({
   id,
   type,
-  x: x - centerX,
-  y: y - centerY,
-  width,
-  height,
+  x: snap(x - centerX),
+  y: snap(y - centerY),
+  width: Math.max(gridSize, snap(width)),
+  height: Math.max(gridSize, snap(height)),
   directionDeg,
 })
 

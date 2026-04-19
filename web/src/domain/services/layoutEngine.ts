@@ -8,6 +8,9 @@ export type LayoutScene = {
   seats: Seat[]
 }
 
+export const DEFAULT_GRID_SIZE = 20
+export const DEFAULT_ROOM_PADDING = 60
+
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
 
 const rotate = (p: { x: number; y: number }, rad: number) => {
@@ -34,9 +37,15 @@ export const buildLayoutScene = (args: {
   seatOverrides?: Record<string, { x: number; y: number }>
 }): LayoutScene => {
   const { template } = args
-  const roomPadding = args.roomPadding ?? 60
-  const gridSize = args.gridSize ?? 20
-  const room = getDefaultRoom(template, roomPadding)
+  const gridSize = args.gridSize ?? DEFAULT_GRID_SIZE
+  const roomPadding = args.roomPadding ?? DEFAULT_ROOM_PADDING
+  const roomRaw = getDefaultRoom(template, roomPadding)
+  const room: Room = {
+    x: snap(roomRaw.x, gridSize),
+    y: snap(roomRaw.y, gridSize),
+    width: snap(roomRaw.width, gridSize),
+    height: snap(roomRaw.height, gridSize),
+  }
   const elementOverrides = args.elementOverrides ?? {}
   const seatOverrides = args.seatOverrides ?? {}
 
@@ -133,7 +142,8 @@ export const buildLayoutScene = (args: {
   const rotatedSeats: Seat[] = template.seats.map((s) => {
     const p = rotate({ x: s.x, y: s.y }, delta)
     const ov = seatOverrides[s.id]
-    return ov ? { ...s, x: ov.x, y: ov.y } : { ...s, x: p.x, y: p.y }
+    const base = ov ? { x: ov.x, y: ov.y } : { x: p.x, y: p.y }
+    return { ...s, x: snap(base.x, gridSize), y: snap(base.y, gridSize) }
   })
 
   const rotatedElements: VenueElement[] = currentElements.map((e) => {
@@ -142,8 +152,27 @@ export const buildLayoutScene = (args: {
     const from = base ? { x: base.x, y: base.y } : { x: e.x, y: e.y }
     const p = rotate(from, delta)
     const ov = elementOverrides[e.id]
-    return ov ? { ...e, x: ov.x, y: ov.y } : { ...e, x: p.x, y: p.y }
+    const basePos = ov ? { x: ov.x, y: ov.y } : { x: p.x, y: p.y }
+    return { ...e, x: snap(basePos.x, gridSize), y: snap(basePos.y, gridSize) }
   })
 
-  return { room, elements: rotatedElements, seats: rotatedSeats }
+  const snappedAnchors = rotatedElements.map((e) => {
+    if (!isAnchor(e)) return e
+    const ov = elementOverrides[e.id]
+    const x = ov ? ov.x : e.x
+    const y = ov ? ov.y : e.y
+    return {
+      ...e,
+      x: snap(x, gridSize),
+      y: snap(y, gridSize),
+      width: Math.max(gridSize, snap(e.width, gridSize)),
+      height: Math.max(gridSize, snap(e.height, gridSize)),
+    }
+  })
+
+  const snappedOthers = snappedAnchors.map((e) =>
+    isAnchor(e) ? e : { ...e, width: Math.max(gridSize, snap(e.width, gridSize)), height: Math.max(gridSize, snap(e.height, gridSize)) },
+  )
+
+  return { room, elements: snappedOthers, seats: rotatedSeats }
 }
