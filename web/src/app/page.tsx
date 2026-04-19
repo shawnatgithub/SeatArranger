@@ -93,10 +93,20 @@ export default function Home() {
             </label>
           </div>
           <div className={styles.actionRow}>
-            <button type="button" className={styles.primaryBtn} onPointerUp={createProject} disabled={!templateId}>
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              onClick={createProject}
+              disabled={!templateId}
+            >
               进入编辑
             </button>
-            <button type="button" className={styles.secondaryBtn} onPointerUp={generateVenue} disabled={!templateId}>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={generateVenue}
+              disabled={!templateId}
+            >
               生成场地
             </button>
           </div>

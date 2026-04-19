@@ -6,7 +6,7 @@
 ## What Changes
 - 修复首页两个关键按钮的交互触发：在鼠标点击、触屏点击、以及 WebView/内嵌预览环境下均能稳定触发。
 - 增加针对“生成场地”的可观测性：点击后必须进入“已生成”状态并渲染平面图（至少能显示画布容器与 Konva 内容）。
-- 明确排查与验证流程：使用 Chrome DevTools MCP 工具抓取 console/network/DOM 状态来定位“无响应”原因。
+- 明确排查与验证流程：优先使用 Chrome DevTools MCP 工具抓取 console/network/DOM 状态；若该环境下 Chrome DevTools MCP 无法启动，则使用浏览器自动化工具（integrated_browser）完成等价验证。
 - **不改变**业务语义：进入编辑仍创建项目并跳转；生成场地仍仅更新首页预览，不创建项目。
 
 ## Impact
@@ -43,4 +43,3 @@
 
 ## REMOVED Requirements
 无
-
