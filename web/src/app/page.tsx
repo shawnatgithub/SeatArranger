@@ -24,6 +24,7 @@ export default function Home() {
   const [templateId, setTemplateId] = useState(TEMPLATES[0]?.id ?? '')
   const [strategyId, setStrategyId] = useState<StrategyId>('leader_visit')
   const [generatedTemplateId, setGeneratedTemplateId] = useState<string | undefined>(undefined)
+  const [generatedStrategyId, setGeneratedStrategyId] = useState<StrategyId | undefined>(undefined)
   const [generateSeed, setGenerateSeed] = useState<number | undefined>(undefined)
 
   const templates = useMemo(() => TEMPLATES, [])
@@ -51,6 +52,7 @@ export default function Home() {
   const generateVenue = () => {
     if (!templateId) return
     setGeneratedTemplateId(templateId)
+    setGeneratedStrategyId(strategyId)
     setGenerateSeed(Date.now())
   }
 
@@ -136,7 +138,7 @@ export default function Home() {
         </section>
 
         <section className={`${styles.card} ${styles.fullWidth}`}>
-          <HomeVenueSimulator generatedTemplateId={generatedTemplateId} seed={generateSeed} />
+          <HomeVenueSimulator generatedTemplateId={generatedTemplateId} strategyId={generatedStrategyId} seed={generateSeed} />
         </section>
       </main>
     </div>

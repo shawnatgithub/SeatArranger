@@ -2,11 +2,13 @@ import type { Seat, VenueElement, VenueTemplate } from '@/domain/models'
 
 const canvasWidth = 900
 const canvasHeight = 600
+const centerX = canvasWidth / 2
+const centerY = canvasHeight / 2
 
 const seat = (id: string, x: number, y: number, zone?: Seat['zone']): Seat => ({
   id,
-  x,
-  y,
+  x: x - centerX,
+  y: y - centerY,
   zone,
 })
 
@@ -21,8 +23,8 @@ const element = (
 ): VenueElement => ({
   id,
   type,
-  x,
-  y,
+  x: x - centerX,
+  y: y - centerY,
   width,
   height,
   directionDeg,

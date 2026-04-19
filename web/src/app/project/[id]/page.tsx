@@ -16,22 +16,34 @@ import { VenueCanvas } from '@/ui/components/VenueCanvas'
 const getTemplate = (templateId: string): VenueTemplate =>
   TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0]
 
-const applySeatOverrides = (template: VenueTemplate, seatOverrides?: StoredProject['seatOverrides']): VenueTemplate => {
-  if (!seatOverrides) return template
-  const seats = template.seats.map((s) => {
-    const ov = seatOverrides[s.id]
-    return ov ? { ...s, x: ov.x, y: ov.y } : s
-  })
-  return { ...template, seats }
-}
+const normalizeOverridesToWorld = (args: {
+  template: VenueTemplate
+  seatOverrides?: StoredProject['seatOverrides']
+  elementOverrides?: StoredProject['elementOverrides']
+  seatLabelOverrides?: StoredProject['seatLabelOverrides']
+}) => {
+  const { template } = args
+  const cx = template.canvasWidth / 2
+  const cy = template.canvasHeight / 2
 
-const applyElementOverrides = (template: VenueTemplate, elementOverrides?: StoredProject['elementOverrides']): VenueTemplate => {
-  if (!elementOverrides) return template
-  const elements = template.elements.map((el) => {
-    const ov = elementOverrides[el.id]
-    return ov ? { ...el, x: ov.x, y: ov.y } : el
-  })
-  return { ...template, elements }
+  const toWorldMaybe = (p: { x: number; y: number }) => {
+    const looksLikeCanvas = p.x > cx || p.y > cy
+    return looksLikeCanvas ? { x: p.x - cx, y: p.y - cy } : p
+  }
+
+  const seatOverrides = args.seatOverrides
+    ? Object.fromEntries(Object.entries(args.seatOverrides).map(([k, v]) => [k, toWorldMaybe(v)]))
+    : undefined
+
+  const elementOverrides = args.elementOverrides
+    ? Object.fromEntries(Object.entries(args.elementOverrides).map(([k, v]) => [k, toWorldMaybe(v)]))
+    : undefined
+
+  return {
+    seatOverrides,
+    elementOverrides,
+    seatLabelOverrides: args.seatLabelOverrides,
+  }
 }
 
 export default function ProjectPage() {
@@ -53,8 +65,18 @@ export default function ProjectPage() {
 
   const template = useMemo(() => {
     if (!project) return undefined
-    return applyElementOverrides(applySeatOverrides(getTemplate(project.templateId), project.seatOverrides), project.elementOverrides)
+    return getTemplate(project.templateId)
   }, [project])
+
+  const normalized = useMemo(() => {
+    if (!project || !template) return undefined
+    return normalizeOverridesToWorld({
+      template,
+      seatOverrides: project.seatOverrides,
+      elementOverrides: project.elementOverrides,
+      seatLabelOverrides: project.seatLabelOverrides,
+    })
+  }, [project, template])
 
   const assignmentView = useMemo(() => {
     if (!project || !template) return undefined
@@ -231,9 +253,9 @@ export default function ProjectPage() {
             <div className={styles.canvasWrap}>
               <VenueCanvas
                 template={template}
-                seatOverrides={project.seatOverrides}
-                elementOverrides={project.elementOverrides}
-                seatLabelOverrides={project.seatLabelOverrides}
+                seatOverrides={normalized?.seatOverrides}
+                elementOverrides={normalized?.elementOverrides}
+                seatLabelOverrides={normalized?.seatLabelOverrides}
                 assignments={assignmentView}
                 mainSeatId={arranged?.mainSeatId ?? project.userMainSeatId}
                 editable={editSeats}

@@ -8,6 +8,7 @@ import type {
 } from '@/domain/models'
 import { STRATEGY_NAME, findHostLeader, findVipPeople, isVipRole } from '@/domain/rules/meetingStrategies'
 import { resolveMainSeatId } from '@/domain/rules/mainSeatResolver'
+import { buildLayoutScene } from '@/domain/services/layoutEngine'
 
 const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   (a.x - b.x) ** 2 + (a.y - b.y) ** 2
@@ -67,9 +68,8 @@ const pickBestSeatId = (args: {
   person: Person
   mainSeat: Seat
   screen?: { x: number; y: number }
-  canvasCenterX: number
 }) => {
-  const { seats, person, mainSeat, screen, canvasCenterX } = args
+  const { seats, person, mainSeat, screen } = args
 
   const zoneBonus =
     person.side === 'host'
@@ -84,7 +84,7 @@ const pickBestSeatId = (args: {
     return Math.max(0, 500_000 - d)
   }
 
-  const symmetryBonus = (s: Seat) => -Math.abs(s.x - canvasCenterX) * 200
+  const symmetryBonus = (s: Seat) => -Math.abs(s.x) * 200
 
   const score = (s: Seat) => {
     const dMain = dist2(s, mainSeat)
@@ -132,7 +132,10 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
   }
 
   const screenEl = template.elements.find((e) => e.type === 'screen')
-  const screen = screenEl ? { x: screenEl.x + screenEl.width / 2, y: screenEl.y + screenEl.height / 2 } : undefined
+  const scene = buildLayoutScene({ template })
+  const screenAuto = scene.elements.find((e) => e.type === 'screen')
+  const screenEl2 = screenEl ?? screenAuto
+  const screen = screenEl2 ? { x: screenEl2.x + screenEl2.width / 2, y: screenEl2.y + screenEl2.height / 2 } : undefined
 
   const usedPeople = new Set(locked.map((a) => a.personId))
   const usedSeats = new Set(locked.map((a) => a.seatId))
@@ -167,7 +170,6 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
       person: hostLeader,
       mainSeat,
       screen,
-      canvasCenterX: template.canvasWidth / 2,
     })
     if (best) {
       takeSeat(hostLeader, best)
@@ -196,7 +198,6 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
       person,
       mainSeat,
       screen,
-      canvasCenterX: template.canvasWidth / 2,
     })
     if (!best) break
 
@@ -231,4 +232,3 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
     mainSeatId,
   }
 }
-

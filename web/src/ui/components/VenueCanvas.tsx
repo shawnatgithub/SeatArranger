@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
 
 import type { Seat, VenueElement, VenueTemplate } from '@/domain/models'
+import { buildLayoutScene } from '@/domain/services/layoutEngine'
 
 export type SeatOverrides = Record<string, { x: number; y: number }>
 export type ElementOverrides = Record<string, { x: number; y: number }>
@@ -43,6 +44,14 @@ const seatFill = (seat: Seat) => {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
+const toCanvas = (template: VenueTemplate, p: { x: number; y: number }) => ({
+  x: p.x + template.canvasWidth / 2,
+  y: p.y + template.canvasHeight / 2,
+})
+const toWorld = (template: VenueTemplate, p: { x: number; y: number }) => ({
+  x: p.x - template.canvasWidth / 2,
+  y: p.y - template.canvasHeight / 2,
+})
 
 export const VenueCanvas = (props: VenueCanvasProps) => {
   const {
@@ -62,13 +71,18 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
 
   const gridSize = 20
   const roomPadding = 60
-  const room = useMemo(() => {
-    const x = roomPadding
-    const y = roomPadding
-    const width = template.canvasWidth - roomPadding * 2
-    const height = template.canvasHeight - roomPadding * 2
-    return { x, y, width, height }
-  }, [template.canvasHeight, template.canvasWidth])
+
+  const scene = useMemo(
+    () =>
+      buildLayoutScene({
+        template,
+        gridSize,
+        roomPadding,
+        seatOverrides,
+        elementOverrides,
+      }),
+    [elementOverrides, roomPadding, seatOverrides, template, gridSize],
+  )
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const localStageRef = useRef<KonvaType.Stage | null>(null)
@@ -112,78 +126,38 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
 
   const seats = useMemo(
     () =>
-      template.seats.map((s) => {
-        const ov = seatOverrides?.[s.id]
-        return ov ? { ...s, x: ov.x, y: ov.y } : s
+      scene.seats.map((s) => {
+        const c = toCanvas(template, { x: s.x, y: s.y })
+        return { ...s, x: c.x, y: c.y }
       }),
-    [seatOverrides, template.seats],
+    [scene.seats, template],
   )
 
   const elements = useMemo(() => {
-    const out: VenueElement[] = template.elements.map((el) => {
-      const ov = elementOverrides?.[el.id]
-      return ov ? { ...el, x: ov.x, y: ov.y } : el
+    return scene.elements.map((el) => {
+      const c = toCanvas(template, { x: el.x, y: el.y })
+      return { ...el, x: c.x, y: c.y }
     })
-    const hasScreen = out.some((e) => e.type === 'screen')
-    const hasEntrance = out.some((e) => e.type === 'entrance')
-
-    if (!hasScreen) {
-      const h = Math.round(room.height * 0.3)
-      out.push({
-        id: 'auto-screen',
-        type: 'screen',
-        x: room.x + 10,
-        y: room.y + Math.round((room.height - h) / 2),
-        width: 20,
-        height: h,
-      })
-    }
-
-    if (!hasEntrance) {
-      const w = 56
-      const h = 18
-      out.push({
-        id: 'auto-entrance-left',
-        type: 'entrance',
-        x: room.x + 40,
-        y: room.y + room.height - h - 8,
-        width: w,
-        height: h,
-      })
-      out.push({
-        id: 'auto-entrance-right',
-        type: 'entrance',
-        x: room.x + room.width - w - 40,
-        y: room.y + room.height - h - 8,
-        width: w,
-        height: h,
-      })
-    }
-
-    const windowW = Math.round(room.width * 0.5)
-    const windowH = 12
-    out.push({
-      id: 'auto-window',
-      type: 'window',
-      x: room.x + Math.round((room.width - windowW) / 2),
-      y: room.y + 10,
-      width: windowW,
-      height: windowH,
-    })
-
-    return out.map((el) => {
-      const ov = elementOverrides?.[el.id]
-      return ov ? { ...el, x: ov.x, y: ov.y } : el
-    })
-  }, [elementOverrides, room.height, room.width, room.x, room.y, template.elements])
+  }, [scene.elements, template])
 
   const gridLines = useMemo(() => {
     const xs: number[] = []
     const ys: number[] = []
-    for (let x = 0; x <= template.canvasWidth; x += gridSize) xs.push(x)
-    for (let y = 0; y <= template.canvasHeight; y += gridSize) ys.push(y)
+    const halfW = template.canvasWidth / 2
+    const halfH = template.canvasHeight / 2
+    const startX = -Math.ceil(halfW / gridSize) * gridSize
+    const endX = Math.ceil(halfW / gridSize) * gridSize
+    const startY = -Math.ceil(halfH / gridSize) * gridSize
+    const endY = Math.ceil(halfH / gridSize) * gridSize
+    for (let x = startX; x <= endX; x += gridSize) xs.push(x)
+    for (let y = startY; y <= endY; y += gridSize) ys.push(y)
     return { xs, ys }
-  }, [gridSize, template.canvasHeight, template.canvasWidth])
+  }, [gridSize, template])
+
+  const roomCanvas = useMemo(() => {
+    const p = toCanvas(template, { x: scene.room.x, y: scene.room.y })
+    return { x: p.x, y: p.y, width: scene.room.width, height: scene.room.height }
+  }, [scene.room.height, scene.room.width, scene.room.x, scene.room.y, template])
 
   useEffect(() => {
     const container = containerRef.current
@@ -286,15 +260,25 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
           <Rect x={0} y={0} width={template.canvasWidth} height={template.canvasHeight} fill="#ffffff" />
 
           {gridLines.xs.map((x) => (
-            <Line key={`gx_${x}`} points={[x, 0, x, template.canvasHeight]} stroke="rgba(0,0,0,0.06)" strokeWidth={1} />
+            <Line
+              key={`gx_${x}`}
+              points={[x + template.canvasWidth / 2, 0, x + template.canvasWidth / 2, template.canvasHeight]}
+              stroke="rgba(0,0,0,0.06)"
+              strokeWidth={1}
+            />
           ))}
           {gridLines.ys.map((y) => (
-            <Line key={`gy_${y}`} points={[0, y, template.canvasWidth, y]} stroke="rgba(0,0,0,0.06)" strokeWidth={1} />
+            <Line
+              key={`gy_${y}`}
+              points={[0, y + template.canvasHeight / 2, template.canvasWidth, y + template.canvasHeight / 2]}
+              stroke="rgba(0,0,0,0.06)"
+              strokeWidth={1}
+            />
           ))}
         </Layer>
 
         <Layer listening={false}>
-          <Rect x={room.x} y={room.y} width={room.width} height={room.height} stroke="rgba(0,0,0,0.22)" strokeWidth={2} cornerRadius={10} />
+          <Rect x={roomCanvas.x} y={roomCanvas.y} width={roomCanvas.width} height={roomCanvas.height} stroke="rgba(0,0,0,0.22)" strokeWidth={2} cornerRadius={10} />
         </Layer>
 
         <Layer>
@@ -307,11 +291,13 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                 y={el.y}
                 draggable={draggable}
                 onDragEnd={(e) => {
-                  const pos = e.target.position()
-                  const x = clamp(snap(pos.x, gridSize), room.x, room.x + room.width - el.width)
-                  const y = clamp(snap(pos.y, gridSize), room.y, room.y + room.height - el.height)
-                  e.target.position({ x, y })
-                  onElementDragEnd?.(el.id, { x, y })
+                  const posCanvas = e.target.position()
+                  const posWorld = toWorld(template, posCanvas)
+                  const xWorld = clamp(snap(posWorld.x, gridSize), scene.room.x, scene.room.x + scene.room.width - el.width)
+                  const yWorld = clamp(snap(posWorld.y, gridSize), scene.room.y, scene.room.y + scene.room.height - el.height)
+                  const nextCanvas = toCanvas(template, { x: xWorld, y: yWorld })
+                  e.target.position(nextCanvas)
+                  onElementDragEnd?.(el.id, { x: xWorld, y: yWorld })
                 }}
               >
                 <Rect
@@ -340,11 +326,13 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                 y={s.y}
                 draggable={Boolean(editable)}
                 onDragEnd={(e) => {
-                  const pos = e.target.position()
-                  const x = clamp(snap(pos.x, gridSize), room.x + radius, room.x + room.width - radius)
-                  const y = clamp(snap(pos.y, gridSize), room.y + radius, room.y + room.height - radius)
-                  e.target.position({ x, y })
-                  onSeatDragEnd?.(s.id, { x, y })
+                  const posCanvas = e.target.position()
+                  const posWorld = toWorld(template, posCanvas)
+                  const xWorld = clamp(snap(posWorld.x, gridSize), scene.room.x + radius, scene.room.x + scene.room.width - radius)
+                  const yWorld = clamp(snap(posWorld.y, gridSize), scene.room.y + radius, scene.room.y + scene.room.height - radius)
+                  const nextCanvas = toCanvas(template, { x: xWorld, y: yWorld })
+                  e.target.position(nextCanvas)
+                  onSeatDragEnd?.(s.id, { x: xWorld, y: yWorld })
                 }}
                 onClick={() => onSeatClick?.(s.id)}
                 onTap={() => onSeatClick?.(s.id)}
@@ -372,16 +360,17 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                     y={labelOffset.dy}
                     draggable={Boolean(editable)}
                     onDragEnd={(e) => {
-                      const parentPos = e.target.getParent()?.position() ?? { x: s.x, y: s.y }
-                      const pos = e.target.position()
-                      const absX = parentPos.x + pos.x
-                      const absY = parentPos.y + pos.y
-                      const snappedX = clamp(snap(absX, gridSize), room.x, room.x + room.width)
-                      const snappedY = clamp(snap(absY, gridSize), room.y, room.y + room.height)
-                      const dx = snappedX - parentPos.x
-                      const dy = snappedY - parentPos.y
-                      e.target.position({ x: dx, y: dy })
-                      onSeatLabelDragEnd?.(s.id, { dx, dy })
+                      const seatCanvas = e.target.getParent()?.position() ?? { x: s.x, y: s.y }
+                      const posCanvas = e.target.position()
+                      const absCanvas = { x: seatCanvas.x + posCanvas.x, y: seatCanvas.y + posCanvas.y }
+                      const absWorld = toWorld(template, absCanvas)
+                      const snappedWorldX = clamp(snap(absWorld.x, gridSize), scene.room.x, scene.room.x + scene.room.width)
+                      const snappedWorldY = clamp(snap(absWorld.y, gridSize), scene.room.y, scene.room.y + scene.room.height)
+                      const seatWorld = toWorld(template, seatCanvas)
+                      const dxWorld = snappedWorldX - seatWorld.x
+                      const dyWorld = snappedWorldY - seatWorld.y
+                      e.target.position({ x: dxWorld, y: dyWorld })
+                      onSeatLabelDragEnd?.(s.id, { dx: dxWorld, dy: dyWorld })
                     }}
                   >
                     <Text text={a.name} fontSize={12} fill="#111" width={140} height={16} offsetX={70} offsetY={0} x={0} y={0} align="center" />

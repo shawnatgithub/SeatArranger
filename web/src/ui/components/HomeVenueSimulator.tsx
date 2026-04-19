@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 
-import { getTemplateById } from '@/domain'
+import { STRATEGY_NAME, getDefaultRoom, getTemplateById } from '@/domain'
 import type { SeatOverrides } from '@/ui/components/VenueCanvas'
 import { VenueCanvas } from '@/ui/components/VenueCanvas'
 
@@ -24,11 +24,12 @@ const rand01 = (seed: number) => {
 
 export type HomeVenueSimulatorProps = {
   generatedTemplateId?: string
+  strategyId?: keyof typeof STRATEGY_NAME
   seed?: number
 }
 
 export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
-  const { generatedTemplateId, seed } = props
+  const { generatedTemplateId, seed, strategyId } = props
 
   const template = useMemo(() => {
     if (!generatedTemplateId) return undefined
@@ -38,14 +39,15 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
   const seatOverrides = useMemo<SeatOverrides | undefined>(() => {
     if (!template || seed === undefined) return undefined
     const maxJitter = 18
+    const room = getDefaultRoom(template, 60)
     const out: SeatOverrides = {}
     for (const s of template.seats) {
       const base = seed + hashString(s.id)
       const dx = (rand01(base) - 0.5) * 2 * maxJitter
       const dy = (rand01(base + 1) - 0.5) * 2 * maxJitter
       out[s.id] = {
-        x: clamp(s.x + dx, 18, template.canvasWidth - 18),
-        y: clamp(s.y + dy, 18, template.canvasHeight - 18),
+        x: clamp(s.x + dx, room.x + 18, room.x + room.width - 18),
+        y: clamp(s.y + dy, room.y + 18, room.y + room.height - 18),
       }
     }
     return out
@@ -79,7 +81,9 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
   return (
     <div>
       <div style={{ fontWeight: 650, fontSize: 14 }}>模拟现场</div>
-      <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>已基于模板“{template.name}”生成</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>
+        已基于模板“{template.name}”生成{strategyId ? ` · ${STRATEGY_NAME[strategyId] ?? strategyId}` : ''}
+      </div>
       <div
         style={{
           marginTop: 12,
