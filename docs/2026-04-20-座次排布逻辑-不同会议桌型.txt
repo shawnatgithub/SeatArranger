@@ -1,0 +1,397 @@
+"""
+会议座次自动化排布核心算法模版-Part A
+适用场景：长桌型、回字型（U型）
+核心逻辑：权重优先级锚定 + 左右交替发散
+"""
+
+class AutoSeatingLogic:
+    def __init__(self, room_config, participants):
+        self.room = room_config          # 包含：door_pos, screen_pos, layout_type, meeting_type
+        self.people = participants      # 包含：name, rank_score, side(A/B)
+        self.seats = []                 # 最终生成的带编号座位列表
+
+    def execute(self):
+        # 1. 确定物理坐标系中的“1号位” (Master Seat) 索引
+        master_index = self.locate_master_seat()
+        
+        # 2. 根据会议性质分发填充逻辑
+        if self.room.meeting_type == "Bilateral":
+            return self.arrange_bilateral(master_index)
+        else:
+            return self.arrange_internal(master_index)
+
+    def locate_master_seat(self):
+        """
+        确定主位(1号位)的规则逻辑
+        """
+        # 情形 A：内部汇报且有屏幕（面屏为尊）
+        if self.room.meeting_type == "Internal" and self.room.has_screen:
+            # 1号位在屏幕对侧短边的中点
+            return "ShortSide_Opposite_Screen_Center"
+            
+        # 情形 B：常规长桌/回字型（面门为尊/远门为上）
+        if self.room.door_pos == "ShortSide":
+            # 门在短边，1号位在另一端的短边中点（离门最远）
+            return "ShortSide_Far_From_Door"
+        else:
+            # 门在长边，1号位在正对门的长边中点
+            return "LongSide_Facing_Door_Center"
+
+    def arrange_internal(self, master_idx):
+        """
+        单边/内部汇报逻辑：左右发散 (R1 -> L1 -> R2 -> L2)
+        """
+        # 按职级排序：1代表最高，数字越大级别越低
+        sorted_people = sorted(self.people, key=lambda x: x.rank_score)
+        
+        assigned_seats = {}
+        for i, person in enumerate(sorted_people):
+            if i == 0:
+                # 1号位直接入座
+                assigned_seats[master_idx] = person
+            else:
+                # 计算偏移量：i为1,2时偏移1；i为3,4时偏移2...
+                offset = (i + 1) // 2
+                if i % 2 != 0:
+                    # 奇数序号(2,4,6...)：坐领导右手边 (算法上为 master + offset)
+                    assigned_seats[master_idx + offset] = person
+                else:
+                    # 偶数序号(3,5,7...)：坐领导左手边 (算法上为 master - offset)
+                    assigned_seats[master_idx - offset] = person
+        return assigned_seats
+
+    def arrange_bilateral(self, master_idx):
+        """
+        双边对谈逻辑：对等镜像
+        """
+        # 1. 拆分 A、B 两组人员
+        side_a = [p for p in self.people if p.side == "A"]
+        side_b = [p for p in self.people if p.side == "B"]
+        
+        # 2. A侧（通常为面门或内侧）按内部逻辑排布
+        results_a = self.arrange_internal_on_side(side_a, "Side_A_Row")
+        
+        # 3. B侧（通常为背门或外侧）镜像排布
+        # 核心：B侧1号位必须正对A侧1号位，且职级对称
+        results_b = self.mirror_arrange(side_b, target_reference=results_a)
+        
+        return {**results_a, **results_b}
+
+    def special_rules_checker(self):
+        """
+        开发需预留的特殊逻辑开关 (Boolean Toggles)
+        """
+        # TODO: 双首长模式 (is_even_leaders = True)
+        # 如果两位领导职级并列，则1号在左，2号在右，共同居中
+        
+        # TODO: 视角切换 (perspective = "Viewer" vs "Sitter")
+        # 确保输出的打印图纸与入座者的实际左右感一致
+        
+        # TODO: 回字型拐角避让 (corner_clash_avoidance)
+        # 在U型拐角处，如果由于体型或空间导致拥挤，自动跳过拐角索引
+        pass
+
+# 开发建议：
+# 1. 建议将座位序列建模为线性数组，以便通过索引(Index)轻松计算 offset。
+# 2. U型布局可视为一个折叠的数组：[左翼, 底边, 右翼]。
+
+# 算法逻辑要点（长桌型、回字型（U型））：
+# 1. ​坐标原点：所有逻辑基于 locate_master_seat 确定的 Index 0。
+# 2. ​左右判定：代码中采用 +offset 和 -offset。在前端 UI 渲染时，需要根据“入座者视角”进行镜像映射（即：入座者的右手，在管理员视角通常是屏幕的左侧）。
+# 3. ​内部汇报（面屏场景）：即使门在长边，只要有屏幕且为内部会议，主位优先级：屏幕对轴线 > 远门。
+# 4. ​扩展性：该模版通过修改 locate_master_seat 即可适配圆桌或剧院式布局。
+
+
+"""
+会议座次自动化排布核心算法模版-Part B
+适用场景：主席台 (Rostrums / Stage)
+核心逻辑：奇偶判别 + 观众视角转换 + 左右交替发散
+"""
+
+class StageSeatingLogic:
+    def __init__(self, stage_config, participants):
+        self.stage = stage_config        # 包含：total_seats, is_even_mode(自动判定)
+        self.people = participants       # 包含：name, rank_score (1为最高)
+        self.final_layout = []           # 最终排布结果
+
+    def execute(self):
+        # 1. 预处理：按职级升序排列（1号领导、2号领导...）
+        sorted_people = sorted(self.people, key=lambda x: x.rank_score)
+        num_of_people = len(sorted_people)
+        
+        # 2. 判定奇偶模式（主席台核心差异）
+        if num_of_people % 2 != 0:
+            return self.arrange_odd_rostrum(sorted_people)
+        else:
+            return self.arrange_even_rostrum(sorted_people)
+
+    def arrange_odd_rostrum(self, sorted_people):
+        """
+        奇数人数主席台逻辑：单人居中
+        排列顺序（观众视角）：...5-3-1-2-4...
+        注：1号在正中，2号在1号右手边（观众视角看是1号左侧）
+        """
+        count = len(sorted_people)
+        layout = [None] * count
+        center_idx = count // 2  # 确定中点索引
+        
+        for i, person in enumerate(sorted_people):
+            if i == 0:
+                layout[center_idx] = person
+            else:
+                # 偏移量计算
+                offset = (i + 1) // 2
+                if i % 2 != 0:
+                    # 2, 4, 6号位：入座者右手边，即观众视角左侧
+                    # 在数组逻辑中，通常定义为 center + offset 或根据视角配置
+                    layout[center_idx + offset] = person
+                else:
+                    # 3, 5, 7号位：入座者左手边，即观众视角右侧
+                    layout[center_idx - offset] = person
+        return layout
+
+    def arrange_even_rostrum(self, sorted_people):
+        """
+        偶数人数主席台逻辑：双人居中
+        排列顺序（观众视角）：...6-4-2-1-3-5...
+        注：1号、2号位共同居中，1号位在左，2号位在右（观众视角）
+        """
+        count = len(sorted_people)
+        layout = [None] * count
+        
+        # 偶数定义两个中心位置
+        left_center = (count // 2) - 1
+        right_center = count // 2
+        
+        for i, person in enumerate(sorted_people):
+            if i == 0:
+                layout[left_center] = person   # 1号位
+            elif i == 1:
+                layout[right_center] = person  # 2号位
+            else:
+                # 3号及以后，基于1号和2号的外侧轮流排列
+                offset = i // 2
+                if i % 2 == 0: # 3, 5, 7号（按rank序号）
+                    layout[right_center + offset] = person
+                else: # 4, 6, 8号（按rank序号）
+                    layout[left_center - offset] = person
+        return layout
+
+    def developer_notes(self):
+        """
+        给开发人员的特殊逻辑备注
+        """
+        # 1. 视角锚点 (Perspective Anchor)：
+        # 主席台排座文档必须注明天视图是“观众视角”还是“领导入座视角”。
+        # 默认算法逻辑通常采用数组 Index，前端渲染时需做一次 Mirror 映射。
+
+        # 2. 只有一排 vs 多排：
+        # 如果有两排主席台，前排职级 > 后排职级。
+        # 每排均独立应用上述“奇偶发散逻辑”。
+
+        # 3. 极端情况处理：
+        # 若主席台人数 > 物理座位数，需触发 overflow 警告。
+        # 这种场景下，通常 1号位必须严格对准背景板/LOGO的中心线。
+        pass
+
+# 调用示例：
+# logic = StageSeatingLogic(config, people)
+# result = logic.execute()
+
+# 算法逻辑要点（针对主席台式）：
+# 1. ​奇数规则（居中原则）：
+​1号位：绝对居中。
+​2号位：在1号位右手边（入座者视角）。
+​3号位：在1号位左手边（入座者视角）。
+​逻辑抽象：... 5 - 3 - 1 - 2 - 4 ...（观众视角）。
+# 2. ​偶数规则（双中心原则）：
+​1号与2号：共同在中央。
+​1号位：在2号位的右手边（入座者视角，即观众看过去1号在左，2号在右）。
+​逻辑抽象：... 6 - 4 - 2 - 1 - 3 - 5 ...（观众视角）。
+# 3. ​UI 渲染提醒：
+主席台通常会有“背景板”和“讲台”，在体素化或 2D 排布图中，应增加一个 Facing_Direction 参数，以确保自动生成的座牌文字方向正确。
+# 4. 主席台下方座次排布：
+参考课桌式或剧院式，需提醒用户利用其他模板另行排布
+
+"""
+会议座次自动化排布核心算法模版-Part C
+适用场景：课桌式 (Classroom Layout) / 剧院式 (Theater Layout)
+核心逻辑：多排多列矩阵 + 前排优先 + 中轴发散
+"""
+
+class ClassroomSeatingLogic:
+    def __init__(self, room_config, participants):
+        self.room = room_config          # 包含：rows(总排数), cols_per_row(每排座数), has_aisle(是否有中通过道)
+        self.people = participants       # 包含：name, rank_score (1为最高)
+        self.matrix = []                 # 存储生成的二维座位矩阵
+
+    def execute(self):
+        # 1. 预处理：按职级升序排列
+        sorted_people = sorted(self.people, key=lambda x: x.rank_score)
+        
+        # 2. 初始化座位矩阵 (Row x Col)
+        rows = self.room.rows
+        cols = self.room.cols_per_row
+        
+        # 3. 逐排填充逻辑：前排优先
+        assigned_count = 0
+        total_people = len(sorted_people)
+        
+        seating_plan = []
+        for r in range(rows):
+            if assigned_count >= total_people:
+                break
+            
+            # 获取本排应当安置的人员切片
+            current_row_people = sorted_people[assigned_count : assigned_count + cols]
+            
+            # 对本排内部进行“中轴发散”排布
+            row_layout = self.arrange_row_by_center(current_row_people, cols)
+            seating_plan.append({"row_number": r + 1, "seats": row_layout})
+            
+            assigned_count += len(current_row_people)
+            
+        return seating_plan
+
+    def arrange_row_by_center(self, row_people, max_cols):
+        """
+        单排内部排布：基于中轴线的“右高左低”
+        观众视角顺序示例 (5座)：5 - 3 - 1 - 2 - 4
+        """
+        row_seats = [None] * max_cols
+        center_idx = max_cols // 2 # 找到本排的中点
+        
+        for i, person in enumerate(row_people):
+            if i == 0:
+                row_seats[center_idx] = person
+            else:
+                offset = (i + 1) // 2
+                if i % 2 != 0:
+                    # 2, 4, 6号：入座者右手边（观众视角左侧）
+                    row_seats[center_idx + offset] = person
+                else:
+                    # 3, 5, 7号：入座者左手边（观众视角右侧）
+                    row_seats[center_idx - offset] = person
+        return row_seats
+
+    def developer_notes(self):
+        """
+        给开发人员的特殊逻辑备注
+        """
+        # 1. 过道处理 (Aisle Logic)：
+        # 如果中间有走廊，需将 cols 拆分为两个数组（如 left_block, right_block）。
+        # 此时“1号位”通常紧邻走廊（如果是单走廊）或位于中央方阵。
+
+        # 2. 身份标签驱动 (Label-Driven)：
+        # 课桌式常有“VIP区”或“媒体区”划分。
+        # 建议增加一个字段 area_tag，优先匹配特定排数。
+
+        # 3. 视角提醒：
+        # 课桌式通常全员面朝讲台，UI显示时应明确标注“讲台/屏幕”位置。
+        pass
+
+# 调用示例：
+# logic = ClassroomSeatingLogic(config, people)
+# result = logic.execute()
+
+
+# 算法逻辑要点（针对课桌式）：
+# 1. ​优先级维度：
+​首要维度：排数（Row）。1号领导必在第一排，随后的职级按排数向后递减。
+​次要维度：列位（Column）。每一排内部再次应用“中轴发散”规则。
+# 2. ​左右分布逻辑：
+​承袭“以右为尊”原则。在每一排中，本排最高级别者居中，其次者在其右手边（入座者视角）。
+​逻辑序列：5 - 3 - 1 - 2 - 4（观众视角）。
+# 3. ​过道（Aisle）的影响：
+​如果教室中间有一条大过道，逻辑会发生变化。通常将过道两侧的“内侧位”视为优于“外侧位”（靠墙位）。
+​开发人员在处理此类布局时，需要将 max_cols 逻辑修改为 blocks（区块）逻辑。
+# 4. ​UI 交互建议：
+​由于课桌式参会人数通常较多，建议开发人员实现**“一键平铺”**功能，将职级列表直接映射到矩阵坐标，并允许用户手动微调（拖拽换位）。
+
+"""
+会议座次自动化排布核心算法模版-Part D
+适用场景：圆桌式 (Round Table Layout)
+核心逻辑：极坐标定位 + 正对大门为尊 + 顺时针/逆时针交替权重
+"""
+
+class RoundTableSeatingLogic:
+    def __init__(self, room_config, participants):
+        self.room = room_config          # 包含：door_pos(大门方位), total_seats(座位总数)
+        self.people = participants       # 包含：name, rank_score (1为最高)
+        self.seats = []                  # 存储生成的圆形座位列表
+
+    def execute(self):
+        # 1. 预处理：按职级升序排列
+        sorted_people = sorted(self.people, key=lambda x: x.rank_score)
+        
+        # 2. 确定“1号位” (Master Seat) 的角度坐标
+        # 原则：正对大门的位置为尊（通常定义为 12点钟或 0° 方向）
+        master_angle = self.locate_master_angle()
+        
+        # 3. 计算每个座位的角度步长
+        num_seats = self.room.total_seats
+        angle_step = 360 / num_seats
+        
+        # 4. 分配人员到对应角度
+        seating_plan = {}
+        for i, person in enumerate(sorted_people):
+            if i == 0:
+                # 1号位入座主位角度
+                seating_plan[master_angle] = person
+            else:
+                # 计算偏移步数
+                step_count = (i + 1) // 2
+                if i % 2 != 0:
+                    # 2, 4, 6号：1号位的右手边（按时钟方向通常为 1点、2点方向）
+                    # 注：圆桌礼仪中，右手为尊，即顺时针方向优先级更高
+                    target_angle = (master_angle + step_count * angle_step) % 360
+                else:
+                    # 3, 5, 7号：1号位的左手边（按时钟方向通常为 11点、10点方向）
+                    target_angle = (master_angle - step_count * angle_step) % 360
+                
+                seating_plan[target_angle] = person
+                
+        return seating_plan
+
+    def locate_master_angle(self):
+        """
+        确定圆桌主位角度
+        """
+        # 默认：将大门位置设为 180°，主位则在 0° (正对大门)
+        return 0 
+
+    def developer_notes(self):
+        """
+        给开发人员的特殊逻辑备注
+        """
+        # 1. 视角转换 (Perspective)：
+        # 在圆桌渲染时，需明确 0° 是在屏幕上方还是下方。
+        # 通常建议将主位（正对门位）置于 UI 的顶部中央。
+
+        # 2. 顺逆时针礼仪 (Clockwise Logic)：
+        # 商务宴请中，2号位在1号位的右侧（顺时针方向）。
+        # 需注意代码中的角度加减方向是否与实际物理方位一致。
+
+        # 3. 多桌场景 (Multi-Table)：
+        # 若是多圆桌排列，需先对“桌子”进行编号（1号桌、2号桌...）。
+        # 1号桌通常在离门最远、最靠中间的位置。
+        pass
+
+# 调用示例：
+# logic = RoundTableSeatingLogic(config, people)
+# result = logic.execute()
+
+# 算法逻辑要点（针对圆桌式）：
+# 1. ​坐标原点：
+​主位定位：圆桌没有物理的“头”，其主位完全由**大门（Entry）**的位置决定。
+​面门为尊：离大门最远、正对大门的位置是 1 号位。
+# 2. ​分布优先级：
+​遵循**“以右为尊”**。2 号位在 1 号位的右侧，3 号位在 1 号位的左侧。
+​逻辑序列：以 1 号位为圆心，左右交替向门口方向延伸。最后一名参会者（职级最低者）通常背对大门。
+# 3. ​开发人员的图形化挑战：
+​极坐标转换：开发人员需要将角度（Angle）转换为 CSS 或 Canvas 的 (x, y) 坐标。公式通常为：
+x = center_x + radius * cos(angle)
+y = center_y + radius * sin(angle)
+​文字旋转：在生成排座图时，座牌文字需要根据角度进行旋转，确保名字始终面向桌子中心或始终水平可读（取决于用户偏好）。
+# 4. ​多桌管理（进阶建议）：
+​如果是多个圆桌，通常遵循**“主桌居中/居前”**的原则。您以后推导多桌场景时，可以先运行一个“桌子权重算法”，再在每张桌子内部运行此“圆桌算法”。
