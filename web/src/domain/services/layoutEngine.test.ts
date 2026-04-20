@@ -4,13 +4,16 @@ import type { VenueTemplate } from '@/domain/models'
 import { DEFAULT_GRID_SIZE, buildLayoutScene } from '@/domain/services/layoutEngine'
 
 describe('buildLayoutScene', () => {
-  it('rotates seats when screen anchor is moved', () => {
+  it('recomputes layout when anchor moves', () => {
     const t: VenueTemplate = {
       id: 't',
       name: 't',
       canvasWidth: 900,
       canvasHeight: 600,
-      elements: [{ id: 'table-1', type: 'table', x: 0, y: 0, width: 200, height: 80 }],
+      elements: [
+        { id: 'table-1', type: 'table', x: 80, y: 60, width: 200, height: 80 },
+        { id: 'screen-1', type: 'screen', x: -390, y: -40, width: 40, height: 160 },
+      ],
       seats: [{ id: 's1', x: 120, y: 0, zone: 'neutral' }],
       defaultMainSeatId: 's1',
     }
@@ -18,12 +21,12 @@ describe('buildLayoutScene', () => {
     const base = buildLayoutScene({ template: t })
     const rotated = buildLayoutScene({
       template: t,
-      elementOverrides: { 'auto-screen': { x: 200, y: 0 } },
+      elementOverrides: { 'screen-1': { x: -390, y: 120 } },
     })
 
-    const sBase = base.seats.find((s) => s.id === 's1')!
-    const sRot = rotated.seats.find((s) => s.id === 's1')!
-    expect(Math.abs(sRot.x - sBase.x) + Math.abs(sRot.y - sBase.y)).toBeGreaterThan(1)
+    const tableBase = base.elements.find((e) => e.id === 'table-1')!
+    const tableRot = rotated.elements.find((e) => e.id === 'table-1')!
+    expect(Math.abs(tableRot.x - tableBase.x) + Math.abs(tableRot.y - tableBase.y)).toBeGreaterThan(0)
   })
 
   it('ensures all scene coordinates follow grid modulus', () => {
@@ -56,5 +59,43 @@ describe('buildLayoutScene', () => {
       expect(mod(s.x)).toBe(0)
       expect(mod(s.y)).toBe(0)
     }
+  })
+
+  it('places seats on table edges and evenly spaced on each edge', () => {
+    const t: VenueTemplate = {
+      id: 't',
+      name: 't',
+      canvasWidth: 900,
+      canvasHeight: 600,
+      elements: [{ id: 'table-1', type: 'table', x: -200, y: -100, width: 400, height: 200 }],
+      seats: [
+        { id: 'l1', x: -210, y: -50, zone: 'host' },
+        { id: 'l2', x: -210, y: 0, zone: 'host' },
+        { id: 'l3', x: -210, y: 50, zone: 'host' },
+        { id: 'r1', x: 210, y: -50, zone: 'guest' },
+        { id: 'r2', x: 210, y: 0, zone: 'guest' },
+        { id: 'r3', x: 210, y: 50, zone: 'guest' },
+      ],
+    }
+
+    const out = buildLayoutScene({ template: t, gridSize: DEFAULT_GRID_SIZE })
+    const table = out.elements.find((e) => e.id === 'table-1')!
+    const left = out.seats.filter((s) => s.id.startsWith('l')).sort((a, b) => a.y - b.y)
+    const right = out.seats.filter((s) => s.id.startsWith('r')).sort((a, b) => a.y - b.y)
+
+    expect(left.length).toBe(3)
+    expect(right.length).toBe(3)
+
+    const leftX = left[0]!.x
+    const rightX = right[0]!.x
+    expect(left.every((s) => s.x === leftX)).toBe(true)
+    expect(right.every((s) => s.x === rightX)).toBe(true)
+
+    expect(leftX).toBeLessThan(table.x)
+    expect(rightX).toBeGreaterThan(table.x + table.width)
+
+    const d1 = left[1]!.y - left[0]!.y
+    const d2 = left[2]!.y - left[1]!.y
+    expect(Math.abs(d1 - d2)).toBeLessThanOrEqual(DEFAULT_GRID_SIZE)
   })
 })

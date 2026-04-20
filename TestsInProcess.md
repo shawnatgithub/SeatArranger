@@ -47,3 +47,25 @@
 
 手工验证截图：
 - /data/tool/browser_snapshots/sim-draggable-hint.png
+
+## Iteration 2：增强排布逻辑（碰撞/墙体吸附/桌边均匀座位）
+
+### 目标
+- 场地元素之间不可重叠或碰撞（至少保证桌子与桌子/锚点不重叠；座位落在桌边）
+- 门/窗/屏幕等定位元素只能吸附墙体边线
+- 桌子边上的座位均匀分布（同一条边间距一致）；若左右边座位不均衡，优先让“低侧”承载更多座位
+
+### 代码变更摘要
+- 布局引擎：
+  - 增加桌子碰撞消解（桌子-桌子、桌子-锚点），迭代推开并夹紧到房间内：[layoutEngine.ts](file:///workspace/web/src/domain/services/layoutEngine.ts)
+  - 锚点统一吸附墙体边线（引擎内默认/override 都会落到墙边）：[snapAnchorToRoomWall](file:///workspace/web/src/domain/services/layoutEngine.ts)
+  - 座位重新排布到“最近桌子边缘”，并在同一边均匀分布；左右不均衡时将多余座位移动到右侧（低侧）:[layoutSeatsOnTables](file:///workspace/web/src/domain/services/layoutEngine.ts)
+- 交互层：
+  - 拖拽锚点（门/窗/屏幕）时仅沿墙体边线吸附：[VenueCanvas.tsx](file:///workspace/web/src/ui/components/VenueCanvas.tsx)
+
+### 测试执行与结果
+- 依赖补齐：`cd /workspace/web && npm ci` → 通过
+- `npm run typecheck` → 通过
+- `npm run lint` → 通过
+- `npm test` → 通过（新增/更新布局引擎测试覆盖“桌边均匀座位”与“锚点变更触发布局重算”）
+- `npm run build` → 通过

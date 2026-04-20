@@ -49,9 +49,10 @@ const normalizeOverridesToWorld = (args: {
 export default function ProjectPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
-  const projectId = params.id
+  const projectId = params?.id ?? ''
 
   const [project, setProject] = useState<StoredProject | undefined>(() => {
+    if (!projectId) return undefined
     const p = getProject(projectId)
     return p
   })

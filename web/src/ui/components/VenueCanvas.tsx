@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
 
 import type { Seat, VenueElement, VenueTemplate } from '@/domain/models'
-import { buildLayoutScene } from '@/domain/services/layoutEngine'
+import { buildLayoutScene, snapAnchorToRoomWall } from '@/domain/services/layoutEngine'
 
 export type SeatOverrides = Record<string, { x: number; y: number }>
 export type ElementOverrides = Record<string, { x: number; y: number }>
@@ -293,11 +293,23 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                 onDragEnd={(e) => {
                   const posCanvas = e.target.position()
                   const posWorld = toWorld(template, posCanvas)
-                  const xWorld = clamp(snap(posWorld.x, gridSize), scene.room.x, scene.room.x + scene.room.width - el.width)
-                  const yWorld = clamp(snap(posWorld.y, gridSize), scene.room.y, scene.room.y + scene.room.height - el.height)
-                  const nextCanvas = toCanvas(template, { x: xWorld, y: yWorld })
+                  let nextWorld = { x: posWorld.x, y: posWorld.y }
+                  if (el.type === 'screen' || el.type === 'entrance' || el.type === 'window') {
+                    nextWorld = snapAnchorToRoomWall({
+                      room: scene.room,
+                      gridSize,
+                      element: { type: el.type, width: el.width, height: el.height },
+                      pos: posWorld,
+                    })
+                  } else {
+                    nextWorld = {
+                      x: clamp(snap(posWorld.x, gridSize), scene.room.x, scene.room.x + scene.room.width - el.width),
+                      y: clamp(snap(posWorld.y, gridSize), scene.room.y, scene.room.y + scene.room.height - el.height),
+                    }
+                  }
+                  const nextCanvas = toCanvas(template, nextWorld)
                   e.target.position(nextCanvas)
-                  onElementDragEnd?.(el.id, { x: xWorld, y: yWorld })
+                  onElementDragEnd?.(el.id, { x: nextWorld.x, y: nextWorld.y })
                 }}
               >
                 <Rect
