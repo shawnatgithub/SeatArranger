@@ -295,12 +295,13 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                   const posWorld = toWorld(template, posCanvas)
                   let nextWorld = { x: posWorld.x, y: posWorld.y }
                   if (el.type === 'screen' || el.type === 'entrance' || el.type === 'window') {
-                    nextWorld = snapAnchorToRoomWall({
+                    const snapped = snapAnchorToRoomWall({
                       room: scene.room,
                       gridSize,
                       element: { type: el.type, width: el.width, height: el.height },
                       pos: posWorld,
                     })
+                    nextWorld = { x: snapped.x, y: snapped.y }
                   } else {
                     nextWorld = {
                       x: clamp(snap(posWorld.x, gridSize), scene.room.x, scene.room.x + scene.room.width - el.width),

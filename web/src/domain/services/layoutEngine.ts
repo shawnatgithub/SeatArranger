@@ -12,6 +12,7 @@ export const DEFAULT_GRID_SIZE = 20
 export const DEFAULT_ROOM_PADDING = 60
 
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
+const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2
 
 const rotate = (p: { x: number; y: number }, rad: number) => {
   const c = Math.cos(rad)
@@ -28,6 +29,8 @@ const rectsOverlap = (a: { x: number; y: number; width: number; height: number }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
+export type RoomWall = 'left' | 'right' | 'top' | 'bottom'
+
 export const snapAnchorToRoomWall = (args: {
   room: Room
   gridSize: number
@@ -35,33 +38,48 @@ export const snapAnchorToRoomWall = (args: {
   pos: { x: number; y: number }
 }) => {
   const { room, gridSize, element, pos } = args
+  const w0 = Math.max(gridSize, snap(element.width, gridSize))
+  const h0 = Math.max(gridSize, snap(element.height, gridSize))
+  const longIsWidth = w0 >= h0
+
+  const wallFor = (w: number, h: number) => {
+    const minX = room.x
+    const maxX = room.x + room.width - w
+    const minY = room.y
+    const maxY = room.y + room.height - h
+    const distLeft = Math.abs(pos.x - minX)
+    const distRight = Math.abs(pos.x - maxX)
+    const distTop = Math.abs(pos.y - minY)
+    const distBottom = Math.abs(pos.y - maxY)
+    return [
+      { wall: 'left' as const, d: distLeft },
+      { wall: 'right' as const, d: distRight },
+      { wall: 'top' as const, d: distTop },
+      { wall: 'bottom' as const, d: distBottom },
+    ].sort((a, b) => a.d - b.d)[0]?.wall ?? 'left'
+  }
+
+  const wall = wallFor(w0, h0)
+  const wantHorizontal = wall === 'top' || wall === 'bottom'
+  const w = wantHorizontal ? Math.max(w0, h0) : Math.min(w0, h0)
+  const h = wantHorizontal ? Math.min(w0, h0) : Math.max(w0, h0)
+  const rotated = longIsWidth !== wantHorizontal
+
   const minX = room.x
-  const maxX = room.x + room.width - element.width
+  const maxX = room.x + room.width - w
   const minY = room.y
-  const maxY = room.y + room.height - element.height
+  const maxY = room.y + room.height - h
 
-  const distLeft = Math.abs(pos.x - minX)
-  const distRight = Math.abs(pos.x - maxX)
-  const distTop = Math.abs(pos.y - minY)
-  const distBottom = Math.abs(pos.y - maxY)
-
-  const best = [
-    { wall: 'left', d: distLeft },
-    { wall: 'right', d: distRight },
-    { wall: 'top', d: distTop },
-    { wall: 'bottom', d: distBottom },
-  ].sort((a, b) => a.d - b.d)[0]?.wall
-
-  if (best === 'left') {
-    return { x: minX, y: clamp(snap(pos.y, gridSize), minY, maxY) }
+  if (wall === 'left') {
+    return { wall, rotated, x: minX, y: clamp(snap(pos.y, gridSize), minY, maxY), width: w, height: h }
   }
-  if (best === 'right') {
-    return { x: maxX, y: clamp(snap(pos.y, gridSize), minY, maxY) }
+  if (wall === 'right') {
+    return { wall, rotated, x: maxX, y: clamp(snap(pos.y, gridSize), minY, maxY), width: w, height: h }
   }
-  if (best === 'top') {
-    return { x: clamp(snap(pos.x, gridSize), minX, maxX), y: minY }
+  if (wall === 'top') {
+    return { wall, rotated, x: clamp(snap(pos.x, gridSize), minX, maxX), y: minY, width: w, height: h }
   }
-  return { x: clamp(snap(pos.x, gridSize), minX, maxX), y: maxY }
+  return { wall, rotated, x: clamp(snap(pos.x, gridSize), minX, maxX), y: maxY, width: w, height: h }
 }
 
 export const getDefaultRoom = (template: VenueTemplate, padding: number) => {
@@ -155,21 +173,71 @@ const assignSeatToTableEdge = (tables: VenueElement[], seat: Seat) => {
   return best
 }
 
-const rebalanceEdges = (groups: Map<string, Seat[]>) => {
+const leftRightEdgesFromFacing = (facing: { x: number; y: number }): { leftEdge: 'left' | 'right' | 'top' | 'bottom'; rightEdge: 'left' | 'right' | 'top' | 'bottom' } => {
+  const len2 = facing.x * facing.x + facing.y * facing.y
+  const fx = len2 < 1e-6 ? -1 : facing.x
+  const fy = len2 < 1e-6 ? 0 : facing.y
+  const leftNormal = { x: -fy, y: fx }
+  const dots = [
+    { edge: 'left' as const, d: -leftNormal.x },
+    { edge: 'right' as const, d: leftNormal.x },
+    { edge: 'top' as const, d: -leftNormal.y },
+    { edge: 'bottom' as const, d: leftNormal.y },
+  ]
+  const leftEdge = [...dots].sort((a, b) => b.d - a.d)[0]!.edge
+  const rightEdge = [...dots].sort((a, b) => a.d - b.d)[0]!.edge
+  return { leftEdge, rightEdge }
+}
+
+const rebalanceEdgesDirectional = (groups: Map<string, Seat[]>, facing: { x: number; y: number }) => {
   const keys = [...groups.keys()]
   const tables = new Set(keys.map((k) => k.split('::')[0]))
+  const { leftEdge, rightEdge } = leftRightEdgesFromFacing(facing)
   for (const t of tables) {
-    const leftKey = `${t}::left`
-    const rightKey = `${t}::right`
-    const left = groups.get(leftKey) ?? []
-    const right = groups.get(rightKey) ?? []
-    if (left.length > right.length) {
-      const moveCount = Math.ceil((left.length - right.length) / 2)
-      const moved = left.splice(left.length - moveCount, moveCount)
-      groups.set(leftKey, left)
-      groups.set(rightKey, [...right, ...moved])
+    const highKey = `${t}::${leftEdge}`
+    const lowKey = `${t}::${rightEdge}`
+    const high = groups.get(highKey) ?? []
+    const low = groups.get(lowKey) ?? []
+    if (low.length >= high.length) continue
+    const moveCount = Math.ceil((high.length - low.length) / 2)
+    const moved = high.splice(high.length - moveCount, moveCount)
+    groups.set(highKey, high)
+    groups.set(lowKey, [...low, ...moved])
+  }
+}
+
+type DoorClearance = { x: number; y: number; width: number; height: number; wall: RoomWall }
+
+const inferWall = (room: Room, el: VenueElement, eps = 0.001): RoomWall => {
+  const rightX = room.x + room.width - el.width
+  const bottomY = room.y + room.height - el.height
+  if (Math.abs(el.x - room.x) <= eps) return 'left'
+  if (Math.abs(el.x - rightX) <= eps) return 'right'
+  if (Math.abs(el.y - room.y) <= eps) return 'top'
+  if (Math.abs(el.y - bottomY) <= eps) return 'bottom'
+  return 'bottom'
+}
+
+const buildDoorClearances = (args: { room: Room; gridSize: number; entrances: VenueElement[]; depth: number; pad: number }): DoorClearance[] => {
+  const { room, gridSize } = args
+  const depth = snap(args.depth, gridSize)
+  const pad = snap(args.pad, gridSize)
+  const out: DoorClearance[] = []
+  for (const e of args.entrances) {
+    const wall = inferWall(room, e)
+    if (wall === 'top' || wall === 'bottom') {
+      const x = clamp(e.x - pad, room.x, room.x + room.width)
+      const w = clamp(e.width + pad * 2, gridSize, room.x + room.width - x)
+      const y = wall === 'top' ? room.y : room.y + room.height - depth
+      out.push({ wall, x, y, width: w, height: depth })
+    } else {
+      const y = clamp(e.y - pad, room.y, room.y + room.height)
+      const h = clamp(e.height + pad * 2, gridSize, room.y + room.height - y)
+      const x = wall === 'left' ? room.x : room.x + room.width - depth
+      out.push({ wall, x, y, width: depth, height: h })
     }
   }
+  return out
 }
 
 const layoutSeatsOnTables = (args: {
@@ -177,29 +245,32 @@ const layoutSeatsOnTables = (args: {
   gridSize: number
   tables: VenueElement[]
   seats: Seat[]
+  facing: { x: number; y: number }
+  doorClearances: DoorClearance[]
 }) => {
-  const { room, gridSize, tables } = args
+  const { room, gridSize, tables, doorClearances, facing } = args
   if (tables.length === 0) return args.seats
 
   const seatRadius = 18
+  const minGap = snap(8, gridSize)
+  const minDist = snap(seatRadius * 2 + minGap, gridSize)
+  const wallMargin = snap(gridSize, gridSize)
   const offset = Math.max(gridSize * 2, snap(seatRadius * 2, gridSize))
-  const minX = room.x + seatRadius
-  const maxX = room.x + room.width - seatRadius
-  const minY = room.y + seatRadius
-  const maxY = room.y + room.height - seatRadius
+  const minX = room.x + seatRadius + wallMargin
+  const maxX = room.x + room.width - seatRadius - wallMargin
+  const minY = room.y + seatRadius + wallMargin
+  const maxY = room.y + room.height - seatRadius - wallMargin
 
   const groups = new Map<string, Seat[]>()
-  const seatMeta = new Map<string, { tableId: string; edge: 'left' | 'right' | 'top' | 'bottom' }>()
 
   for (const s of args.seats) {
     const best = assignSeatToTableEdge(tables, s)
     if (!best) continue
     const key = `${best.table.id}::${best.edge}`
     groups.set(key, [...(groups.get(key) ?? []), s])
-    seatMeta.set(s.id, { tableId: best.table.id, edge: best.edge })
   }
 
-  rebalanceEdges(groups)
+  rebalanceEdgesDirectional(groups, facing)
 
   const laidOut: Record<string, { x: number; y: number }> = {}
 
@@ -211,25 +282,90 @@ const layoutSeatsOnTables = (args: {
     const n = sorted.length
     if (n === 0) continue
 
-    if (edge === 'left' || edge === 'right') {
-      const x = edge === 'left' ? table.x - offset : table.x + table.width + offset
-      for (let i = 0; i < n; i++) {
-        const y = table.y + ((i + 1) * table.height) / (n + 1)
-        laidOut[sorted[i].id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
-      }
-    } else {
-      const y = edge === 'top' ? table.y - offset : table.y + table.height + offset
-      for (let i = 0; i < n; i++) {
-        const x = table.x + ((i + 1) * table.width) / (n + 1)
-        laidOut[sorted[i].id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
+    const edgeLength = edge === 'left' || edge === 'right' ? table.height : table.width
+    const maxPerRow = Math.max(1, Math.floor(edgeLength / minDist) - 1)
+    const rows = Math.max(1, Math.ceil(n / maxPerRow))
+    let idx = 0
+
+    for (let r = 0; r < rows; r++) {
+      const remain = n - idx
+      const k = Math.min(maxPerRow, remain)
+      const rowOffset = offset + r * minDist
+      if (edge === 'left' || edge === 'right') {
+        const x = edge === 'left' ? table.x - rowOffset : table.x + table.width + rowOffset
+        for (let i = 0; i < k; i++) {
+          const y = table.y + ((i + 1) * table.height) / (k + 1)
+          laidOut[sorted[idx]!.id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
+          idx++
+        }
+      } else {
+        const y = edge === 'top' ? table.y - rowOffset : table.y + table.height + rowOffset
+        for (let i = 0; i < k; i++) {
+          const x = table.x + ((i + 1) * table.width) / (k + 1)
+          laidOut[sorted[idx]!.id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
+          idx++
+        }
       }
     }
   }
 
-  return args.seats.map((s) => {
+  const avoidDoor = (p: { x: number; y: number }) => {
+    const out = { ...p }
+    for (let iter = 0; iter < 40; iter++) {
+      const hit = doorClearances.find((d) => {
+        const x0 = d.x - seatRadius
+        const y0 = d.y - seatRadius
+        const x1 = d.x + d.width + seatRadius
+        const y1 = d.y + d.height + seatRadius
+        return out.x >= x0 && out.x <= x1 && out.y >= y0 && out.y <= y1
+      })
+      if (!hit) break
+      if (hit.wall === 'top' || hit.wall === 'bottom') {
+        const doorCenter = hit.x + hit.width / 2
+        out.x += (out.x >= doorCenter ? 1 : -1) * gridSize
+      } else {
+        const doorCenter = hit.y + hit.height / 2
+        out.y += (out.y >= doorCenter ? 1 : -1) * gridSize
+      }
+      out.x = clamp(snap(out.x, gridSize), minX, maxX)
+      out.y = clamp(snap(out.y, gridSize), minY, maxY)
+    }
+    return out
+  }
+
+  const outSeats = args.seats.map((s) => {
     const p = laidOut[s.id]
-    return p ? { ...s, x: p.x, y: p.y } : s
+    if (!p) return s
+    const safe = avoidDoor(p)
+    return { ...s, x: safe.x, y: safe.y }
   })
+
+  for (let iter = 0; iter < 40; iter++) {
+    let moved = false
+    for (let i = 0; i < outSeats.length; i++) {
+      for (let j = i + 1; j < outSeats.length; j++) {
+        const a = outSeats[i]
+        const b = outSeats[j]
+        const d2 = dist2(a, b)
+        if (d2 >= minDist * minDist) continue
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const signX = dx === 0 ? 1 : dx > 0 ? 1 : -1
+        const signY = dy === 0 ? 1 : dy > 0 ? 1 : -1
+        if (Math.abs(dx) > Math.abs(dy)) {
+          outSeats[j] = { ...b, x: clamp(snap(b.x + signX * gridSize, gridSize), minX, maxX) }
+          outSeats[i] = { ...a, x: clamp(snap(a.x - signX * gridSize, gridSize), minX, maxX) }
+        } else {
+          outSeats[j] = { ...b, y: clamp(snap(b.y + signY * gridSize, gridSize), minY, maxY) }
+          outSeats[i] = { ...a, y: clamp(snap(a.y - signY * gridSize, gridSize), minY, maxY) }
+        }
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+
+  return outSeats
 }
 
 export const buildLayoutScene = (args: {
@@ -338,8 +474,19 @@ export const buildLayoutScene = (args: {
     return Math.atan2(c.y, c.x)
   }
 
-  const baseAngle = getAngle(anchorBase)
-  const curAngle = getAngle(anchorCur)
+  const snapForAngle = (e: VenueElement | undefined) => {
+    if (!e || !isAnchor(e)) return e
+    const res = snapAnchorToRoomWall({
+      room,
+      gridSize,
+      element: { type: e.type, width: e.width, height: e.height },
+      pos: { x: e.x, y: e.y },
+    })
+    return { ...e, x: res.x, y: res.y, width: res.width, height: res.height }
+  }
+
+  const baseAngle = getAngle(snapForAngle(anchorBase))
+  const curAngle = getAngle(snapForAngle(anchorCur))
   const delta = baseAngle !== undefined && curAngle !== undefined ? curAngle - baseAngle : 0
 
   const rotatedSeats: Seat[] = template.seats.map((s) => {
@@ -364,18 +511,13 @@ export const buildLayoutScene = (args: {
     const ov = elementOverrides[e.id]
     const x = ov ? ov.x : e.x
     const y = ov ? ov.y : e.y
-    const snapped = {
-      ...e,
-      width: Math.max(gridSize, snap(e.width, gridSize)),
-      height: Math.max(gridSize, snap(e.height, gridSize)),
-    }
-    const pos = snapAnchorToRoomWall({
+    const res = snapAnchorToRoomWall({
       room,
       gridSize,
-      element: snapped,
+      element: { type: e.type, width: e.width, height: e.height },
       pos: { x, y },
     })
-    return { ...snapped, x: pos.x, y: pos.y }
+    return { ...e, x: res.x, y: res.y, width: res.width, height: res.height }
   })
 
   const snappedOthers = snappedAnchors.map((e) =>
@@ -384,6 +526,13 @@ export const buildLayoutScene = (args: {
 
   const collisionResolved = resolveElementCollisions({ room, gridSize, elements: snappedOthers })
   const tables = collisionResolved.filter((e) => e.type === 'table')
-  const laidOutSeats = layoutSeatsOnTables({ room, gridSize, tables, seats: rotatedSeats })
+  const screen = collisionResolved.find((e) => e.type === 'screen')
+  const mainSeat = rotatedSeats.find((s) => s.id === template.defaultMainSeatId)
+  const screenC = screen ? elementCenter(screen) : { x: room.x, y: 0 }
+  const mainP = mainSeat ? { x: mainSeat.x, y: mainSeat.y } : { x: 0, y: 0 }
+  const facing = { x: screenC.x - mainP.x, y: screenC.y - mainP.y }
+  const entrances = collisionResolved.filter((e) => e.type === 'entrance')
+  const doorClearances = buildDoorClearances({ room, gridSize, entrances, depth: gridSize * 6, pad: gridSize })
+  const laidOutSeats = layoutSeatsOnTables({ room, gridSize, tables, seats: rotatedSeats, facing, doorClearances })
   return { room, elements: collisionResolved, seats: laidOutSeats }
 }

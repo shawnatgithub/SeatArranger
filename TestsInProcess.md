@@ -69,3 +69,39 @@
 - `npm run lint` → 通过
 - `npm test` → 通过（新增/更新布局引擎测试覆盖“桌边均匀座位”与“锚点变更触发布局重算”）
 - `npm run build` → 通过
+
+## Iteration 3：座椅碰撞/墙体/门洞避让 + 动态高低侧 + 长边贴墙 + 整体朝向
+
+### 目标
+- 碰撞扩展：seat-seat、seat-wall、seat-door（门洞通行区）
+- 动态高侧/低侧：随“主位→屏幕”朝向变化，不再固定右侧
+- 墙体吸附：门/窗/屏幕“长边贴墙”，必要时自动 90° 旋转
+- 锚点移动：桌椅/座位整体调整朝向，保持相对关系（碰撞时仅做必要微调）
+
+### 代码变更摘要
+- Layout Engine：
+  - 锚点吸附升级为“长边贴墙”（返回 width/height 可能交换）并用于角度计算：[snapAnchorToRoomWall](file:///workspace/web/src/domain/services/layoutEngine.ts)
+  - 生成门洞通行留白（doorClearance）并在排座时避让：[buildDoorClearances](file:///workspace/web/src/domain/services/layoutEngine.ts)
+  - 座位排布升级：
+    - 同边均匀分布 + 多排（当同边座位过多时向外扩展多排）保持最小间距
+    - 动态高低侧：根据朝向选择“面向屏幕的左/右侧”，多余座位优先落低侧
+    - seat-seat 最小间距（最终迭代微调）+ seat-wall 夹紧： [layoutSeatsOnTables](file:///workspace/web/src/domain/services/layoutEngine.ts)
+- 交互层：
+  - 拖拽门/窗/屏幕释放时沿墙吸附（使用新的 snapAnchorToRoomWall 返回值）：[VenueCanvas.tsx](file:///workspace/web/src/ui/components/VenueCanvas.tsx)
+- 单测：
+  - 新增/扩展单测覆盖：长边贴墙、门洞避让、动态低侧重平衡：[layoutEngine.test.ts](file:///workspace/web/src/domain/services/layoutEngine.test.ts)
+
+### 修改-测试循环
+#### 第一次尝试（部分失败：lint）
+- `npm run typecheck` → 通过
+- `npm test` → 通过
+- `npm run lint` → 失败（prefer-const）
+
+修复动作：
+- 将局部变量由 `let` 改为 `const`（仅属性变更不需要 let）
+
+#### 第二次尝试（全部通过）
+- `npm run typecheck` → 通过
+- `npm run lint` → 通过
+- `npm test` → 通过
+- `npm run build` → 通过

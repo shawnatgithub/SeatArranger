@@ -98,4 +98,86 @@ describe('buildLayoutScene', () => {
     const d2 = left[2]!.y - left[1]!.y
     expect(Math.abs(d1 - d2)).toBeLessThanOrEqual(DEFAULT_GRID_SIZE)
   })
+
+  it('snaps anchor to room wall and keeps long side along wall', () => {
+    const t: VenueTemplate = {
+      id: 't',
+      name: 't',
+      canvasWidth: 900,
+      canvasHeight: 600,
+      elements: [{ id: 'screen-1', type: 'screen', x: 0, y: 0, width: 40, height: 160 }],
+      seats: [{ id: 'm', x: 0, y: 0, zone: 'neutral' }],
+      defaultMainSeatId: 'm',
+    }
+
+    const out = buildLayoutScene({ template: t, gridSize: DEFAULT_GRID_SIZE })
+    const room = out.room
+    const screen = out.elements.find((e) => e.type === 'screen')!
+
+    const onWall =
+      screen.x === room.x ||
+      screen.x === room.x + room.width - screen.width ||
+      screen.y === room.y ||
+      screen.y === room.y + room.height - screen.height
+    expect(onWall).toBe(true)
+
+    const onHorizontalWall = screen.y === room.y || screen.y === room.y + room.height - screen.height
+    if (onHorizontalWall) expect(screen.width).toBeGreaterThanOrEqual(screen.height)
+    else expect(screen.height).toBeGreaterThanOrEqual(screen.width)
+  })
+
+  it('avoids placing seats inside entrance door clearance', () => {
+    const t: VenueTemplate = {
+      id: 't',
+      name: 't',
+      canvasWidth: 900,
+      canvasHeight: 600,
+      elements: [
+        { id: 'table-1', type: 'table', x: -200, y: -60, width: 400, height: 120 },
+        { id: 'entrance-1', type: 'entrance', x: -60, y: 240, width: 120, height: 20 },
+      ],
+      seats: Array.from({ length: 10 }).map((_, i) => ({ id: `s${i}`, x: 0, y: 0 })),
+      defaultMainSeatId: 's0',
+    }
+
+    const out = buildLayoutScene({ template: t, gridSize: DEFAULT_GRID_SIZE })
+    const room = out.room
+    const entrance = out.elements.find((e) => e.type === 'entrance')!
+    const depth = DEFAULT_GRID_SIZE * 6
+    const pad = DEFAULT_GRID_SIZE
+    const x0 = entrance.x - pad - 18
+    const x1 = entrance.x + entrance.width + pad + 18
+    const y0 = room.y + room.height - depth - 18
+    const y1 = room.y + room.height + 18
+    const anyInDoor = out.seats.some((s) => s.x >= x0 && s.x <= x1 && s.y >= y0 && s.y <= y1)
+    expect(anyInDoor).toBe(false)
+  })
+
+  it('rebalances extra seats to dynamic low side based on facing', () => {
+    const t: VenueTemplate = {
+      id: 't',
+      name: 't',
+      canvasWidth: 900,
+      canvasHeight: 600,
+      elements: [
+        { id: 'table-1', type: 'table', x: -200, y: -100, width: 400, height: 200 },
+        { id: 'screen-1', type: 'screen', x: 320, y: -80, width: 40, height: 160 },
+      ],
+      seats: [
+        { id: 'm', x: 0, y: 0, zone: 'neutral' },
+        { id: 'b1', x: 0, y: 200, zone: 'neutral' },
+        { id: 'b2', x: 30, y: 200, zone: 'neutral' },
+        { id: 'b3', x: -30, y: 200, zone: 'neutral' },
+        { id: 'b4', x: 60, y: 200, zone: 'neutral' },
+        { id: 't1', x: 0, y: -200, zone: 'neutral' },
+      ],
+      defaultMainSeatId: 'm',
+    }
+
+    const out = buildLayoutScene({ template: t, gridSize: DEFAULT_GRID_SIZE })
+    const table = out.elements.find((e) => e.id === 'table-1')!
+    const top = out.seats.filter((s) => s.y < table.y)
+    const bottom = out.seats.filter((s) => s.y > table.y + table.height)
+    expect(top.length).toBeGreaterThanOrEqual(bottom.length)
+  })
 })
