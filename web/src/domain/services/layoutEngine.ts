@@ -10,6 +10,7 @@ export type LayoutScene = {
 
 export const DEFAULT_GRID_SIZE = 20
 export const DEFAULT_ROOM_PADDING = 60
+export const DEFAULT_SEAT_RADIUS = 10
 
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
 const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2
@@ -251,7 +252,7 @@ const layoutSeatsOnTables = (args: {
   const { room, gridSize, tables, doorClearances, facing } = args
   if (tables.length === 0) return args.seats
 
-  const seatRadius = 18
+  const seatRadius = DEFAULT_SEAT_RADIUS
   const minGap = snap(8, gridSize)
   const minDist = snap(seatRadius * 2 + minGap, gridSize)
   const wallMargin = snap(gridSize, gridSize)
@@ -374,6 +375,7 @@ export const buildLayoutScene = (args: {
   gridSize?: number
   elementOverrides?: Record<string, { x: number; y: number }>
   seatOverrides?: Record<string, { x: number; y: number }>
+  seatCount?: number
 }): LayoutScene => {
   const { template } = args
   const gridSize = args.gridSize ?? DEFAULT_GRID_SIZE
@@ -533,6 +535,119 @@ export const buildLayoutScene = (args: {
   const facing = { x: screenC.x - mainP.x, y: screenC.y - mainP.y }
   const entrances = collisionResolved.filter((e) => e.type === 'entrance')
   const doorClearances = buildDoorClearances({ room, gridSize, entrances, depth: gridSize * 6, pad: gridSize })
-  const laidOutSeats = layoutSeatsOnTables({ room, gridSize, tables, seats: rotatedSeats, facing, doorClearances })
-  return { room, elements: collisionResolved, seats: laidOutSeats }
+  const seatCount = args.seatCount
+  const seedSeats = (count: number) => {
+    if (tables.length === 0) return Array.from({ length: count }).map((_, i) => ({ id: `p${i + 1}`, x: 0, y: 0 }))
+    const byArea = [...tables].sort((a, b) => b.width * b.height - a.width * a.height || a.id.localeCompare(b.id))
+    const weights = byArea.map((t) => 2 * (t.width + t.height))
+    const total = weights.reduce((a, b) => a + b, 0) || 1
+    const alloc = byArea.map((t, i) => ({ t, n: Math.floor((count * weights[i]!) / total), w: weights[i]! }))
+    let used = alloc.reduce((a, b) => a + b.n, 0)
+    while (used < count) {
+      alloc.sort((a, b) => b.w - a.w)
+      alloc[0]!.n += 1
+      used += 1
+    }
+
+    const seatRadius = DEFAULT_SEAT_RADIUS
+    const offset = Math.max(gridSize * 2, snap(seatRadius * 2, gridSize))
+    const out: Seat[] = []
+    let k = 1
+    for (const a of alloc) {
+      const n = a.n
+      if (n <= 0) continue
+      const t = a.t
+      const perEdge = Math.ceil(n / 4)
+      const edges: Array<'top' | 'right' | 'bottom' | 'left'> = ['top', 'right', 'bottom', 'left']
+      let idx = 0
+      for (const e of edges) {
+        const m = Math.min(perEdge, n - idx)
+        if (m <= 0) break
+        for (let i = 0; i < m; i++) {
+          if (e === 'top') {
+            const x = t.x + ((i + 1) * t.width) / (m + 1)
+            out.push({ id: `p${k++}`, x: snap(x, gridSize), y: snap(t.y - offset, gridSize) })
+          } else if (e === 'bottom') {
+            const x = t.x + ((i + 1) * t.width) / (m + 1)
+            out.push({ id: `p${k++}`, x: snap(x, gridSize), y: snap(t.y + t.height + offset, gridSize) })
+          } else if (e === 'left') {
+            const y = t.y + ((i + 1) * t.height) / (m + 1)
+            out.push({ id: `p${k++}`, x: snap(t.x - offset, gridSize), y: snap(y, gridSize) })
+          } else {
+            const y = t.y + ((i + 1) * t.height) / (m + 1)
+            out.push({ id: `p${k++}`, x: snap(t.x + t.width + offset, gridSize), y: snap(y, gridSize) })
+          }
+        }
+        idx += m
+      }
+    }
+    while (out.length < count) out.push({ id: `p${k++}`, x: 0, y: 0 })
+    return out.slice(0, count)
+  }
+
+  const seatsForLayout = rotatedSeats.length > 0 ? rotatedSeats : seatCount && seatCount > 0 ? seedSeats(seatCount) : []
+
+  const laidOutSeats = layoutSeatsOnTables({ room, gridSize, tables, seats: seatsForLayout, facing, doorClearances })
+
+  const rankedSeats =
+    rotatedSeats.length > 0 || !seatCount || seatCount <= 0
+      ? laidOutSeats
+      : (() => {
+          const mainTable =
+            [...tables].sort((a, b) => b.width * b.height - a.width * a.height || a.id.localeCompare(b.id))[0] ?? null
+          if (!mainTable) return laidOutSeats.map((s, i) => ({ ...s, id: String(i + 1) }))
+
+          const sc = screen ? elementCenter(screen) : { x: mainTable.x + mainTable.width / 2, y: room.y }
+          const dLeft = Math.abs(sc.x - mainTable.x)
+          const dRight = Math.abs(sc.x - (mainTable.x + mainTable.width))
+          const dTop = Math.abs(sc.y - mainTable.y)
+          const dBottom = Math.abs(sc.y - (mainTable.y + mainTable.height))
+          const startEdge = [
+            { e: 'left' as const, d: dLeft },
+            { e: 'right' as const, d: dRight },
+            { e: 'top' as const, d: dTop },
+            { e: 'bottom' as const, d: dBottom },
+          ].sort((a, b) => a.d - b.d)[0]!.e
+
+          const edgeKey = (s: Seat) => {
+            const dxL = Math.abs(s.x - mainTable.x)
+            const dxR = Math.abs(s.x - (mainTable.x + mainTable.width))
+            const dyT = Math.abs(s.y - mainTable.y)
+            const dyB = Math.abs(s.y - (mainTable.y + mainTable.height))
+            return [
+              { e: 'left' as const, d: dxL },
+              { e: 'right' as const, d: dxR },
+              { e: 'top' as const, d: dyT },
+              { e: 'bottom' as const, d: dyB },
+            ].sort((a, b) => a.d - b.d)[0]!.e
+          }
+
+          const perimeterT = (s: Seat) => {
+            const e = edgeKey(s)
+            const x0 = mainTable.x
+            const x1 = mainTable.x + mainTable.width
+            const y0 = mainTable.y
+            const y1 = mainTable.y + mainTable.height
+
+            const offset = (edge: typeof startEdge) => {
+              if (startEdge === 'top') return edge === 'top' ? 0 : edge === 'right' ? 1 : edge === 'bottom' ? 2 : 3
+              if (startEdge === 'right') return edge === 'right' ? 0 : edge === 'bottom' ? 1 : edge === 'left' ? 2 : 3
+              if (startEdge === 'bottom') return edge === 'bottom' ? 0 : edge === 'left' ? 1 : edge === 'top' ? 2 : 3
+              return edge === 'left' ? 0 : edge === 'top' ? 1 : edge === 'right' ? 2 : 3
+            }
+
+            const seg = offset(e)
+            if (e === 'top' || e === 'bottom') {
+              const t = (s.x - x0) / Math.max(1, x1 - x0)
+              return seg + t
+            }
+            const t = (s.y - y0) / Math.max(1, y1 - y0)
+            return seg + t
+          }
+
+          const sorted = [...laidOutSeats].sort((a, b) => perimeterT(a) - perimeterT(b) || a.id.localeCompare(b.id))
+          return sorted.map((s, i) => ({ ...s, id: String(i + 1) }))
+        })()
+
+  return { room, elements: collisionResolved, seats: rankedSeats }
 }

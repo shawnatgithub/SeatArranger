@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { VenueTemplate } from '@/domain/models'
-import { DEFAULT_GRID_SIZE, buildLayoutScene } from '@/domain/services/layoutEngine'
+import { DEFAULT_GRID_SIZE, DEFAULT_SEAT_RADIUS, buildLayoutScene } from '@/domain/services/layoutEngine'
 
 describe('buildLayoutScene', () => {
   it('recomputes layout when anchor moves', () => {
@@ -145,10 +145,10 @@ describe('buildLayoutScene', () => {
     const entrance = out.elements.find((e) => e.type === 'entrance')!
     const depth = DEFAULT_GRID_SIZE * 6
     const pad = DEFAULT_GRID_SIZE
-    const x0 = entrance.x - pad - 18
-    const x1 = entrance.x + entrance.width + pad + 18
-    const y0 = room.y + room.height - depth - 18
-    const y1 = room.y + room.height + 18
+    const x0 = entrance.x - pad - DEFAULT_SEAT_RADIUS
+    const x1 = entrance.x + entrance.width + pad + DEFAULT_SEAT_RADIUS
+    const y0 = room.y + room.height - depth - DEFAULT_SEAT_RADIUS
+    const y1 = room.y + room.height + DEFAULT_SEAT_RADIUS
     const anyInDoor = out.seats.some((s) => s.x >= x0 && s.x <= x1 && s.y >= y0 && s.y <= y1)
     expect(anyInDoor).toBe(false)
   })
@@ -179,5 +179,20 @@ describe('buildLayoutScene', () => {
     const top = out.seats.filter((s) => s.y < table.y)
     const bottom = out.seats.filter((s) => s.y > table.y + table.height)
     expect(top.length).toBeGreaterThanOrEqual(bottom.length)
+  })
+
+  it('generates ranked seats when seatCount is provided', () => {
+    const t: VenueTemplate = {
+      id: 't',
+      name: 't',
+      canvasWidth: 900,
+      canvasHeight: 600,
+      elements: [{ id: 'table-1', type: 'table', x: -200, y: -60, width: 400, height: 120 }],
+      seats: [],
+    }
+    const out = buildLayoutScene({ template: t, gridSize: DEFAULT_GRID_SIZE, seatCount: 9 })
+    expect(out.seats).toHaveLength(9)
+    expect(out.seats[0]!.id).toBe('1')
+    expect(out.seats[8]!.id).toBe('9')
   })
 })

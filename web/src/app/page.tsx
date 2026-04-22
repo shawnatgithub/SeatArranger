@@ -23,9 +23,6 @@ export default function Home() {
   const [name, setName] = useState('')
   const [templateId, setTemplateId] = useState(TEMPLATES[0]?.id ?? '')
   const [strategyId, setStrategyId] = useState<StrategyId>('leader_visit')
-  const [generatedTemplateId, setGeneratedTemplateId] = useState<string | undefined>(undefined)
-  const [generatedStrategyId, setGeneratedStrategyId] = useState<StrategyId | undefined>(undefined)
-  const [generateSeed, setGenerateSeed] = useState<number | undefined>(undefined)
 
   const templates = useMemo(() => TEMPLATES, [])
 
@@ -47,13 +44,6 @@ export default function Home() {
     upsertProject(project)
     refresh()
     router.push(`/project/${project.id}`)
-  }
-
-  const generateVenue = () => {
-    if (!templateId) return
-    setGeneratedTemplateId(templateId)
-    setGeneratedStrategyId(strategyId)
-    setGenerateSeed(Date.now())
   }
 
   return (
@@ -103,14 +93,6 @@ export default function Home() {
             >
               进入编辑
             </button>
-            <button
-              type="button"
-              className={styles.secondaryBtn}
-              onClick={generateVenue}
-              disabled={!templateId}
-            >
-              生成场地
-            </button>
           </div>
         </section>
 
@@ -138,12 +120,7 @@ export default function Home() {
         </section>
 
         <section className={`${styles.card} ${styles.fullWidth}`}>
-          <HomeVenueSimulator
-            key={`${generatedTemplateId ?? 'none'}:${generateSeed ?? 'none'}`}
-            generatedTemplateId={generatedTemplateId}
-            strategyId={generatedStrategyId}
-            seed={generateSeed}
-          />
+          <HomeVenueSimulator initialPeopleCount={12} />
         </section>
       </main>
     </div>

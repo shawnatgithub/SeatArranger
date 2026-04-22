@@ -18,6 +18,7 @@ export type VenueCanvasProps = {
   seatOverrides?: SeatOverrides
   elementOverrides?: ElementOverrides
   seatLabelOverrides?: SeatLabelOverrides
+  seatCount?: number
   assignments?: SeatAssignmentView
   mainSeatId?: string
   editable?: boolean
@@ -59,6 +60,7 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
     seatOverrides,
     elementOverrides,
     seatLabelOverrides,
+    seatCount,
     assignments,
     mainSeatId,
     editable,
@@ -80,8 +82,9 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
         roomPadding,
         seatOverrides,
         elementOverrides,
+        seatCount,
       }),
-    [elementOverrides, roomPadding, seatOverrides, template, gridSize],
+    [elementOverrides, roomPadding, seatOverrides, template, gridSize, seatCount],
   )
 
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -330,7 +333,7 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
           {seats.map((s) => {
             const a = assignments?.[s.id]
             const isMain = s.id === mainSeatId
-            const radius = 18
+            const radius = 10
             const labelOffset = seatLabelOverrides?.[s.id] ?? { dx: 0, dy: -radius - 8 }
             return (
               <Group
