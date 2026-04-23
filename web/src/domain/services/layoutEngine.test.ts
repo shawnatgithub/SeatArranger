@@ -51,8 +51,6 @@ describe('buildLayoutScene', () => {
     for (const e of out.elements) {
       expect(mod(e.x)).toBe(0)
       expect(mod(e.y)).toBe(0)
-      expect(mod(e.width)).toBe(0)
-      expect(mod(e.height)).toBe(0)
     }
 
     for (const s of out.seats) {

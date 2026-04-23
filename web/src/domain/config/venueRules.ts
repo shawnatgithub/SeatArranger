@@ -1,0 +1,97 @@
+export type VenueRoomShape = 'square' | 'rect'
+
+export type Wall = 'left' | 'right' | 'top' | 'bottom'
+
+export type VenueRules = {
+  metersPerCell: number
+  gridSizePx: number
+  snapStepM: number
+
+  areaPerPersonM2: number
+  rectAspect: number
+  minRoomWidthM: number
+  minRoomHeightM: number
+
+  wallMarginM: number
+  doorClearanceDepthM: number
+  tableWallGapM: number
+  tableTableGapM: number
+
+  door: {
+    lengthM: number
+    thicknessM: number
+    wall: Wall
+    cornerMarginM: number
+  }
+
+  window: {
+    thicknessM: number
+    wall: Wall
+    lengthM: (room: { widthM: number; heightM: number }) => number
+  }
+
+  screen: {
+    thicknessM: number
+    wall: Wall
+    lengthM: (room: { widthM: number; heightM: number }) => number
+  }
+
+  tableModule: {
+    lengthM: number
+    widthM: number
+  }
+
+  seat: {
+    radiusM: number
+    minGapM: number
+  }
+}
+
+export const defaultVenueRules: VenueRules = {
+  metersPerCell: 1,
+  gridSizePx: 20,
+  snapStepM: 0.2,
+
+  areaPerPersonM2: 1.5,
+  rectAspect: 4 / 3,
+  minRoomWidthM: 4,
+  minRoomHeightM: 4,
+
+  wallMarginM: 0.3,
+  doorClearanceDepthM: 1.2,
+  tableWallGapM: 0.6,
+  tableTableGapM: 0.8,
+
+  door: {
+    lengthM: 1.0,
+    thicknessM: 0.2,
+    wall: 'right',
+    cornerMarginM: 0.5,
+  },
+
+  window: {
+    thicknessM: 0.2,
+    wall: 'bottom',
+    lengthM: (room) => Math.max(2, Math.round(Math.max(room.widthM, room.heightM) * 0.4)),
+  },
+
+  screen: {
+    thicknessM: 0.3,
+    wall: 'top',
+    lengthM: (room) => Math.max(2, Math.round(Math.max(room.widthM, room.heightM) * 0.35)),
+  },
+
+  tableModule: {
+    lengthM: 1.2,
+    widthM: 0.6,
+  },
+
+  seat: {
+    radiusM: 0.3,
+    minGapM: 0.2,
+  },
+}
+
+export const metersToPx = (m: number, rules = defaultVenueRules) => m * (rules.gridSizePx / rules.metersPerCell)
+
+export const snapPx = (px: number, stepPx: number) => Math.round(px / stepPx) * stepPx

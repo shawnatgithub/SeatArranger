@@ -1,4 +1,5 @@
 import type { Seat, VenueElement, VenueTemplate } from '@/domain/models'
+import { defaultVenueRules, metersToPx, snapPx } from '@/domain/config/venueRules'
 
 export type Room = { x: number; y: number; width: number; height: number }
 
@@ -10,10 +11,12 @@ export type LayoutScene = {
 
 export const DEFAULT_GRID_SIZE = 20
 export const DEFAULT_ROOM_PADDING = 60
-export const DEFAULT_SEAT_RADIUS = 10
+export const DEFAULT_SEAT_RADIUS = Math.round(metersToPx(defaultVenueRules.seat.radiusM))
+const SNAP_STEP_PX = Math.max(1, Math.round(metersToPx(defaultVenueRules.snapStepM)))
 
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
 const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2
+const snapStep = (v: number) => snapPx(v, SNAP_STEP_PX)
 
 const rotate = (p: { x: number; y: number }, rad: number) => {
   const c = Math.cos(rad)
@@ -39,8 +42,8 @@ export const snapAnchorToRoomWall = (args: {
   pos: { x: number; y: number }
 }) => {
   const { room, gridSize, element, pos } = args
-  const w0 = Math.max(gridSize, snap(element.width, gridSize))
-  const h0 = Math.max(gridSize, snap(element.height, gridSize))
+  const w0 = Math.max(1, snapStep(element.width))
+  const h0 = Math.max(1, snapStep(element.height))
   const longIsWidth = w0 >= h0
 
   const wallFor = (w: number, h: number) => {
@@ -221,8 +224,8 @@ const inferWall = (room: Room, el: VenueElement, eps = 0.001): RoomWall => {
 
 const buildDoorClearances = (args: { room: Room; gridSize: number; entrances: VenueElement[]; depth: number; pad: number }): DoorClearance[] => {
   const { room, gridSize } = args
-  const depth = snap(args.depth, gridSize)
-  const pad = snap(args.pad, gridSize)
+  const depth = Math.max(1, snapStep(args.depth))
+  const pad = Math.max(0, snapStep(args.pad))
   const out: DoorClearance[] = []
   for (const e of args.entrances) {
     const wall = inferWall(room, e)
@@ -253,9 +256,9 @@ const layoutSeatsOnTables = (args: {
   if (tables.length === 0) return args.seats
 
   const seatRadius = DEFAULT_SEAT_RADIUS
-  const minGap = snap(8, gridSize)
-  const minDist = snap(seatRadius * 2 + minGap, gridSize)
-  const wallMargin = snap(gridSize, gridSize)
+  const minGap = Math.max(0, snapStep(metersToPx(defaultVenueRules.seat.minGapM)))
+  const minDist = Math.max(1, seatRadius * 2 + minGap)
+  const wallMargin = Math.max(0, snapStep(metersToPx(defaultVenueRules.wallMarginM)))
   const offset = Math.max(gridSize * 2, snap(seatRadius * 2, gridSize))
   const minX = room.x + seatRadius + wallMargin
   const maxX = room.x + room.width - seatRadius - wallMargin
@@ -534,7 +537,13 @@ export const buildLayoutScene = (args: {
   const mainP = mainSeat ? { x: mainSeat.x, y: mainSeat.y } : { x: 0, y: 0 }
   const facing = { x: screenC.x - mainP.x, y: screenC.y - mainP.y }
   const entrances = collisionResolved.filter((e) => e.type === 'entrance')
-  const doorClearances = buildDoorClearances({ room, gridSize, entrances, depth: gridSize * 6, pad: gridSize })
+  const doorClearances = buildDoorClearances({
+    room,
+    gridSize,
+    entrances,
+    depth: metersToPx(defaultVenueRules.doorClearanceDepthM),
+    pad: metersToPx(defaultVenueRules.wallMarginM),
+  })
   const seatCount = args.seatCount
   const seedSeats = (count: number) => {
     if (tables.length === 0) return Array.from({ length: count }).map((_, i) => ({ id: `p${i + 1}`, x: 0, y: 0 }))
