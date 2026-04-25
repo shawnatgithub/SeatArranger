@@ -119,6 +119,28 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
       <div style={{ fontWeight: 650, fontSize: 14 }}>模拟现场</div>
       <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>{template.name} · 1格={GRID_SIZE}px=1m</div>
       <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={() => {
+            setTemplate(undefined)
+            setSeatCount(undefined)
+            setSeatOverrides(undefined)
+            setElementOverrides(undefined)
+            setSeatLabelOverrides(undefined)
+          }}
+          style={{
+            height: 34,
+            padding: '0 14px',
+            borderRadius: 10,
+            border: '1px solid #dcdcdc',
+            background: '#fff',
+            color: '#111',
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          重新生成场地
+        </button>
         <label style={{ fontSize: 12, color: '#333', display: 'flex', flexDirection: 'column', gap: 6 }}>
           布局类型
           <select

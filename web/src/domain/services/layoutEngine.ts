@@ -396,6 +396,7 @@ export const buildLayoutScene = (args: {
   const baseElements: VenueElement[] = template.elements.map((el) => ({ ...el }))
   const hasScreen = baseElements.some((e) => e.type === 'screen')
   const hasEntrance = baseElements.some((e) => e.type === 'entrance')
+  const hasWindow = baseElements.some((e) => e.type === 'window')
 
   if (!hasScreen) {
     const h = snap(Math.max(120, room.height * 0.3), gridSize)
@@ -431,16 +432,18 @@ export const buildLayoutScene = (args: {
     })
   }
 
-  const windowW = snap(room.width * 0.5, gridSize)
-  const windowH = snap(12, gridSize)
-  baseElements.push({
-    id: 'auto-window',
-    type: 'window',
-    x: snap(-windowW / 2, gridSize),
-    y: room.y + snap(10, gridSize),
-    width: windowW,
-    height: windowH,
-  })
+  if (!hasWindow) {
+    const windowW = snap(room.width * 0.5, gridSize)
+    const windowH = snap(12, gridSize)
+    baseElements.push({
+      id: 'auto-window',
+      type: 'window',
+      x: snap(-windowW / 2, gridSize),
+      y: room.y + snap(10, gridSize),
+      width: windowW,
+      height: windowH,
+    })
+  }
 
   const baseById = new Map(baseElements.map((e) => [e.id, e]))
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
 
 import type { Seat, VenueElement, VenueTemplate } from '@/domain/models'
-import { buildLayoutScene, snapAnchorToRoomWall } from '@/domain/services/layoutEngine'
+import { DEFAULT_SEAT_RADIUS, buildLayoutScene, snapAnchorToRoomWall } from '@/domain/services/layoutEngine'
 
 export type SeatOverrides = Record<string, { x: number; y: number }>
 export type ElementOverrides = Record<string, { x: number; y: number }>
@@ -333,7 +333,7 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
           {seats.map((s) => {
             const a = assignments?.[s.id]
             const isMain = s.id === mainSeatId
-            const radius = 10
+            const radius = DEFAULT_SEAT_RADIUS
             const labelOffset = seatLabelOverrides?.[s.id] ?? { dx: 0, dy: -radius - 8 }
             return (
               <Group
