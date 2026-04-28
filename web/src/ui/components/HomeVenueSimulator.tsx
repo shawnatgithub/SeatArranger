@@ -3,7 +3,7 @@
 import { useState } from 'react'
 
 import type { VenueTemplate } from '@/domain/models'
-import { GRID_SIZE, ROOM_PADDING, buildRoomTemplate, generateTablesForLayout, getDefaultRoom } from '@/domain'
+import { GRID_SIZE, METERS_PER_CELL, ROOM_PADDING, buildRoomTemplate, generateTablesForLayout, getDefaultRoom } from '@/domain'
 import type { ElementOverrides, SeatLabelOverrides, SeatOverrides } from '@/ui/components/VenueCanvas'
 import { VenueCanvas } from '@/ui/components/VenueCanvas'
 
@@ -117,7 +117,7 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
   return (
     <div>
       <div style={{ fontWeight: 650, fontSize: 14 }}>模拟现场</div>
-      <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>{template.name} · 1格={GRID_SIZE}px=1m</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: '#777' }}>{template.name} · 1格={GRID_SIZE}px={METERS_PER_CELL}m</div>
       <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <button
           type="button"

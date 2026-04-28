@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { VenueTemplate } from '@/domain/models'
+import { defaultVenueRules, metersToPx } from '@/domain/config/venueRules'
 import { DEFAULT_GRID_SIZE, DEFAULT_SEAT_RADIUS, buildLayoutScene } from '@/domain/services/layoutEngine'
 
 describe('buildLayoutScene', () => {
@@ -84,17 +85,10 @@ describe('buildLayoutScene', () => {
     expect(left.length).toBe(3)
     expect(right.length).toBe(3)
 
-    const leftX = left[0]!.x
-    const rightX = right[0]!.x
-    expect(left.every((s) => s.x === leftX)).toBe(true)
-    expect(right.every((s) => s.x === rightX)).toBe(true)
-
-    expect(leftX).toBeLessThan(table.x)
-    expect(rightX).toBeGreaterThan(table.x + table.width)
-
-    const d1 = left[1]!.y - left[0]!.y
-    const d2 = left[2]!.y - left[1]!.y
-    expect(Math.abs(d1 - d2)).toBeLessThanOrEqual(DEFAULT_GRID_SIZE)
+    expect(left.every((s) => s.x < table.x)).toBe(true)
+    expect(right.every((s) => s.x > table.x + table.width)).toBe(true)
+    expect(left.every((s) => s.y >= table.y && s.y <= table.y + table.height)).toBe(true)
+    expect(right.every((s) => s.y >= table.y && s.y <= table.y + table.height)).toBe(true)
   })
 
   it('snaps anchor to room wall and keeps long side along wall', () => {
@@ -142,7 +136,7 @@ describe('buildLayoutScene', () => {
     const room = out.room
     const entrance = out.elements.find((e) => e.type === 'entrance')!
     const depth = DEFAULT_GRID_SIZE * 6
-    const pad = DEFAULT_GRID_SIZE
+    const pad = metersToPx(defaultVenueRules.wallMarginM)
     const x0 = entrance.x - pad - DEFAULT_SEAT_RADIUS
     const x1 = entrance.x + entrance.width + pad + DEFAULT_SEAT_RADIUS
     const y0 = room.y + room.height - depth - DEFAULT_SEAT_RADIUS

@@ -48,9 +48,9 @@ export type VenueRules = {
 }
 
 export const defaultVenueRules: VenueRules = {
-  metersPerCell: 1,
+  metersPerCell: 0.2,
   gridSizePx: 20,
-  snapStepM: 0.5,
+  snapStepM: 0.2,
 
   areaPerPersonM2: 1.5,
   rectAspect: 4 / 3,
@@ -64,13 +64,13 @@ export const defaultVenueRules: VenueRules = {
 
   door: {
     lengthM: 1.0,
-    thicknessM: 0.5,
+    thicknessM: 0.2,
     wall: 'right',
     cornerMarginM: 0.5,
   },
 
   window: {
-    thicknessM: 0.5,
+    thicknessM: 0.2,
     wall: 'bottom',
     lengthM: (room) => {
       const w = room.widthM
@@ -79,7 +79,7 @@ export const defaultVenueRules: VenueRules = {
   },
 
   screen: {
-    thicknessM: 0.5,
+    thicknessM: 0.2,
     wall: 'top',
     lengthM: (room) => {
       const w = room.widthM
@@ -93,7 +93,7 @@ export const defaultVenueRules: VenueRules = {
   },
 
   seat: {
-    radiusM: 0.5,
+    radiusM: 0.25,
     minGapM: 0.2,
   },
 }
