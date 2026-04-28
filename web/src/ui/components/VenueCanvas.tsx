@@ -286,7 +286,8 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
 
         <Layer>
           {elements.map((el) => {
-            const draggable = Boolean(editable) && el.type !== 'hostSeatAnchor'
+            if (el.type === 'hostSeatAnchor') return null
+            const draggable = Boolean(editable)
             return (
               <Group
                 key={el.id}
@@ -355,7 +356,7 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
               >
                 <Circle
                   radius={radius}
-                  fill={seatFill(s)}
+                  fill={isMain ? '#ef4444' : seatFill(s)}
                   stroke={isMain ? '#d64545' : a?.locked ? '#2f6feb' : '#999'}
                   strokeWidth={isMain ? 3 : 2}
                 />

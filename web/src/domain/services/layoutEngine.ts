@@ -11,12 +11,14 @@ export type LayoutScene = {
 
 export const DEFAULT_GRID_SIZE = 20
 export const DEFAULT_ROOM_PADDING = 60
-export const DEFAULT_SEAT_RADIUS = Math.round(metersToPx(defaultVenueRules.seat.radiusM))
+const DEFAULT_SEAT_DIAMETER = metersToPx(defaultVenueRules.seat.diameterM)
+export const DEFAULT_SEAT_RADIUS = DEFAULT_SEAT_DIAMETER / 2
 const SNAP_STEP_PX = Math.max(1, Math.round(metersToPx(defaultVenueRules.snapStepM)))
 
 const snap = (v: number, grid: number) => Math.round(v / grid) * grid
 const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2
 const snapStep = (v: number) => snapPx(v, SNAP_STEP_PX)
+const seatSnap = (v: number, gridSize: number) => snapPx(v, Math.max(1, Math.round(gridSize / 2)))
 
 const rotate = (p: { x: number; y: number }, rad: number) => {
   const c = Math.cos(rad)
@@ -224,8 +226,8 @@ const inferWall = (room: Room, el: VenueElement, eps = 0.001): RoomWall => {
 
 const buildDoorClearances = (args: { room: Room; gridSize: number; entrances: VenueElement[]; depth: number; pad: number }): DoorClearance[] => {
   const { room, gridSize } = args
-  const depth = Math.max(1, snapStep(args.depth))
-  const pad = Math.max(0, snapStep(args.pad))
+  const depth = args.depth
+  const pad = args.pad
   const out: DoorClearance[] = []
   for (const e of args.entrances) {
     const wall = inferWall(room, e)
@@ -255,11 +257,14 @@ const layoutSeatsOnTables = (args: {
   const { room, gridSize, tables, doorClearances, facing } = args
   if (tables.length === 0) return args.seats
 
-  const seatRadius = DEFAULT_SEAT_RADIUS
-  const minGap = Math.max(0, snapStep(metersToPx(defaultVenueRules.seat.minGapM)))
-  const minDist = Math.max(1, seatRadius * 2 + minGap)
-  const wallMargin = Math.max(0, snapStep(metersToPx(defaultVenueRules.wallMarginM)))
-  const offset = Math.max(gridSize * 2, snap(seatRadius * 2, gridSize))
+  const seatDiameter = metersToPx(defaultVenueRules.seat.diameterM)
+  const seatRadius = seatDiameter / 2
+  const minGap = metersToPx(defaultVenueRules.seat.minGapM)
+  const seatPitch = seatDiameter + minGap
+  const minDist = seatPitch
+  const wallMargin = metersToPx(defaultVenueRules.wallMarginM)
+  const tableGap = metersToPx(defaultVenueRules.seat.tableGapM)
+  const rowOffset0 = tableGap + seatRadius
   const minX = room.x + seatRadius + wallMargin
   const maxX = room.x + room.width - seatRadius - wallMargin
   const minY = room.y + seatRadius + wallMargin
@@ -287,26 +292,34 @@ const layoutSeatsOnTables = (args: {
     if (n === 0) continue
 
     const edgeLength = edge === 'left' || edge === 'right' ? table.height : table.width
-    const maxPerRow = Math.max(1, Math.floor(edgeLength / minDist) - 1)
+    const maxPerRow = Math.max(1, Math.floor(edgeLength / seatPitch))
     const rows = Math.max(1, Math.ceil(n / maxPerRow))
     let idx = 0
 
     for (let r = 0; r < rows; r++) {
       const remain = n - idx
       const k = Math.min(maxPerRow, remain)
-      const rowOffset = offset + r * minDist
+      const rowOffset = rowOffset0 + r * seatPitch
       if (edge === 'left' || edge === 'right') {
         const x = edge === 'left' ? table.x - rowOffset : table.x + table.width + rowOffset
         for (let i = 0; i < k; i++) {
-          const y = table.y + ((i + 1) * table.height) / (k + 1)
-          laidOut[sorted[idx]!.id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
+          const start = (table.height - (k - 1) * seatPitch) / 2
+          const y = table.y + start + i * seatPitch
+          laidOut[sorted[idx]!.id] = {
+            x: clamp(seatSnap(x, gridSize), minX, maxX),
+            y: clamp(seatSnap(y, gridSize), minY, maxY),
+          }
           idx++
         }
       } else {
         const y = edge === 'top' ? table.y - rowOffset : table.y + table.height + rowOffset
         for (let i = 0; i < k; i++) {
-          const x = table.x + ((i + 1) * table.width) / (k + 1)
-          laidOut[sorted[idx]!.id] = { x: clamp(snap(x, gridSize), minX, maxX), y: clamp(snap(y, gridSize), minY, maxY) }
+          const start = (table.width - (k - 1) * seatPitch) / 2
+          const x = table.x + start + i * seatPitch
+          laidOut[sorted[idx]!.id] = {
+            x: clamp(seatSnap(x, gridSize), minX, maxX),
+            y: clamp(seatSnap(y, gridSize), minY, maxY),
+          }
           idx++
         }
       }
@@ -331,8 +344,8 @@ const layoutSeatsOnTables = (args: {
         const doorCenter = hit.y + hit.height / 2
         out.y += (out.y >= doorCenter ? 1 : -1) * gridSize
       }
-      out.x = clamp(snap(out.x, gridSize), minX, maxX)
-      out.y = clamp(snap(out.y, gridSize), minY, maxY)
+      out.x = clamp(seatSnap(out.x, gridSize), minX, maxX)
+      out.y = clamp(seatSnap(out.y, gridSize), minY, maxY)
     }
     return out
   }
@@ -346,6 +359,7 @@ const layoutSeatsOnTables = (args: {
 
   for (let iter = 0; iter < 40; iter++) {
     let moved = false
+    const nudge = Math.max(1, Math.round(gridSize / 2))
     for (let i = 0; i < outSeats.length; i++) {
       for (let j = i + 1; j < outSeats.length; j++) {
         const a = outSeats[i]
@@ -357,11 +371,11 @@ const layoutSeatsOnTables = (args: {
         const signX = dx === 0 ? 1 : dx > 0 ? 1 : -1
         const signY = dy === 0 ? 1 : dy > 0 ? 1 : -1
         if (Math.abs(dx) > Math.abs(dy)) {
-          outSeats[j] = { ...b, x: clamp(snap(b.x + signX * gridSize, gridSize), minX, maxX) }
-          outSeats[i] = { ...a, x: clamp(snap(a.x - signX * gridSize, gridSize), minX, maxX) }
+          outSeats[j] = { ...b, x: clamp(seatSnap(b.x + signX * nudge, gridSize), minX, maxX) }
+          outSeats[i] = { ...a, x: clamp(seatSnap(a.x - signX * nudge, gridSize), minX, maxX) }
         } else {
-          outSeats[j] = { ...b, y: clamp(snap(b.y + signY * gridSize, gridSize), minY, maxY) }
-          outSeats[i] = { ...a, y: clamp(snap(a.y - signY * gridSize, gridSize), minY, maxY) }
+          outSeats[j] = { ...b, y: clamp(seatSnap(b.y + signY * nudge, gridSize), minY, maxY) }
+          outSeats[i] = { ...a, y: clamp(seatSnap(a.y - signY * nudge, gridSize), minY, maxY) }
         }
         moved = true
       }
@@ -369,7 +383,10 @@ const layoutSeatsOnTables = (args: {
     if (!moved) break
   }
 
-  return outSeats
+  return outSeats.map((s) => {
+    const safe = avoidDoor({ x: s.x, y: s.y })
+    return { ...s, x: safe.x, y: safe.y }
+  })
 }
 
 export const buildLayoutScene = (args: {
@@ -561,8 +578,10 @@ export const buildLayoutScene = (args: {
       used += 1
     }
 
-    const seatRadius = DEFAULT_SEAT_RADIUS
-    const offset = Math.max(gridSize * 2, snap(seatRadius * 2, gridSize))
+    const seatDiameter = metersToPx(defaultVenueRules.seat.diameterM)
+    const seatRadius = seatDiameter / 2
+    const tableGap = metersToPx(defaultVenueRules.seat.tableGapM)
+    const rowOffset0 = tableGap + seatRadius
     const out: Seat[] = []
     let k = 1
     for (const a of alloc) {
@@ -578,16 +597,16 @@ export const buildLayoutScene = (args: {
         for (let i = 0; i < m; i++) {
           if (e === 'top') {
             const x = t.x + ((i + 1) * t.width) / (m + 1)
-            out.push({ id: `p${k++}`, x: snap(x, gridSize), y: snap(t.y - offset, gridSize) })
+            out.push({ id: `p${k++}`, x: seatSnap(x, gridSize), y: seatSnap(t.y - rowOffset0, gridSize) })
           } else if (e === 'bottom') {
             const x = t.x + ((i + 1) * t.width) / (m + 1)
-            out.push({ id: `p${k++}`, x: snap(x, gridSize), y: snap(t.y + t.height + offset, gridSize) })
+            out.push({ id: `p${k++}`, x: seatSnap(x, gridSize), y: seatSnap(t.y + t.height + rowOffset0, gridSize) })
           } else if (e === 'left') {
             const y = t.y + ((i + 1) * t.height) / (m + 1)
-            out.push({ id: `p${k++}`, x: snap(t.x - offset, gridSize), y: snap(y, gridSize) })
+            out.push({ id: `p${k++}`, x: seatSnap(t.x - rowOffset0, gridSize), y: seatSnap(y, gridSize) })
           } else {
             const y = t.y + ((i + 1) * t.height) / (m + 1)
-            out.push({ id: `p${k++}`, x: snap(t.x + t.width + offset, gridSize), y: snap(y, gridSize) })
+            out.push({ id: `p${k++}`, x: seatSnap(t.x + t.width + rowOffset0, gridSize), y: seatSnap(y, gridSize) })
           }
         }
         idx += m

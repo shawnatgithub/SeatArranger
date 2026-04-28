@@ -205,6 +205,7 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
           elementOverrides={elementOverrides}
           seatLabelOverrides={seatLabelOverrides}
           seatCount={seatCount}
+          mainSeatId={seatCount ? '1' : undefined}
           editable
           onSeatDragEnd={(id, pos) => setSeatOverrides((prev) => ({ ...(prev ?? {}), [id]: pos }))}
           onElementDragEnd={(id, pos) => setElementOverrides((prev) => ({ ...(prev ?? {}), [id]: pos }))}

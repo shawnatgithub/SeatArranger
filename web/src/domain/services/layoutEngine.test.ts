@@ -43,6 +43,7 @@ describe('buildLayoutScene', () => {
 
     const out = buildLayoutScene({ template: t })
     const mod = (v: number) => Math.abs(v % DEFAULT_GRID_SIZE)
+    const modSeat = (v: number) => Math.abs(v % (DEFAULT_GRID_SIZE / 2))
 
     expect(mod(out.room.x)).toBe(0)
     expect(mod(out.room.y)).toBe(0)
@@ -55,8 +56,8 @@ describe('buildLayoutScene', () => {
     }
 
     for (const s of out.seats) {
-      expect(mod(s.x)).toBe(0)
-      expect(mod(s.y)).toBe(0)
+      expect(modSeat(s.x)).toBe(0)
+      expect(modSeat(s.y)).toBe(0)
     }
   })
 

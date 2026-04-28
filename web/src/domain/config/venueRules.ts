@@ -42,8 +42,9 @@ export type VenueRules = {
   }
 
   seat: {
-    radiusM: number
+    diameterM: number
     minGapM: number
+    tableGapM: number
   }
 }
 
@@ -93,8 +94,9 @@ export const defaultVenueRules: VenueRules = {
   },
 
   seat: {
-    radiusM: 0.25,
-    minGapM: 0.2,
+    diameterM: 0.6,
+    minGapM: 0.1,
+    tableGapM: 0.2,
   },
 }
 
