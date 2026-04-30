@@ -282,6 +282,7 @@ const layoutSeatsOnTables = (args: {
   rebalanceEdgesDirectional(groups, facing)
 
   const laidOut: Record<string, { x: number; y: number }> = {}
+  const spill: Array<{ seat: Seat; wall: 'left' | 'right' | 'top' | 'bottom' }> = []
 
   for (const [key, seats] of groups.entries()) {
     const [tableId, edge] = key.split('::') as [string, 'left' | 'right' | 'top' | 'bottom']
@@ -293,37 +294,81 @@ const layoutSeatsOnTables = (args: {
 
     const edgeLength = edge === 'left' || edge === 'right' ? table.height : table.width
     const maxPerRow = Math.max(1, Math.floor(edgeLength / seatPitch))
-    const rows = Math.max(1, Math.ceil(n / maxPerRow))
-    let idx = 0
-
-    for (let r = 0; r < rows; r++) {
-      const remain = n - idx
-      const k = Math.min(maxPerRow, remain)
-      const rowOffset = rowOffset0 + r * seatPitch
-      if (edge === 'left' || edge === 'right') {
-        const x = edge === 'left' ? table.x - rowOffset : table.x + table.width + rowOffset
-        for (let i = 0; i < k; i++) {
-          const start = (table.height - (k - 1) * seatPitch) / 2
-          const y = table.y + start + i * seatPitch
-          laidOut[sorted[idx]!.id] = {
-            x: clamp(seatSnap(x, gridSize), minX, maxX),
-            y: clamp(seatSnap(y, gridSize), minY, maxY),
-          }
-          idx++
+    const k = Math.min(maxPerRow, n)
+    const remain = n - k
+    if (edge === 'left' || edge === 'right') {
+      const x = edge === 'left' ? table.x - rowOffset0 : table.x + table.width + rowOffset0
+      for (let i = 0; i < k; i++) {
+        const start = (table.height - (k - 1) * seatPitch) / 2
+        const y = table.y + start + i * seatPitch
+        laidOut[sorted[i]!.id] = {
+          x: clamp(seatSnap(x, gridSize), minX, maxX),
+          y: clamp(seatSnap(y, gridSize), minY, maxY),
         }
-      } else {
-        const y = edge === 'top' ? table.y - rowOffset : table.y + table.height + rowOffset
-        for (let i = 0; i < k; i++) {
-          const start = (table.width - (k - 1) * seatPitch) / 2
-          const x = table.x + start + i * seatPitch
-          laidOut[sorted[idx]!.id] = {
-            x: clamp(seatSnap(x, gridSize), minX, maxX),
-            y: clamp(seatSnap(y, gridSize), minY, maxY),
-          }
-          idx++
+      }
+    } else {
+      const y = edge === 'top' ? table.y - rowOffset0 : table.y + table.height + rowOffset0
+      for (let i = 0; i < k; i++) {
+        const start = (table.width - (k - 1) * seatPitch) / 2
+        const x = table.x + start + i * seatPitch
+        laidOut[sorted[i]!.id] = {
+          x: clamp(seatSnap(x, gridSize), minX, maxX),
+          y: clamp(seatSnap(y, gridSize), minY, maxY),
         }
       }
     }
+    if (remain > 0) {
+      const wall: 'left' | 'right' | 'top' | 'bottom' =
+        edge === 'left' ? 'left' : edge === 'right' ? 'right' : edge === 'top' ? 'top' : 'bottom'
+      for (let i = k; i < n; i++) spill.push({ seat: sorted[i]!, wall })
+    }
+  }
+
+  if (spill.length > 0) {
+    const byWall = {
+      left: spill.filter((s) => s.wall === 'left').map((s) => s.seat),
+      right: spill.filter((s) => s.wall === 'right').map((s) => s.seat),
+      top: spill.filter((s) => s.wall === 'top').map((s) => s.seat),
+      bottom: spill.filter((s) => s.wall === 'bottom').map((s) => s.seat),
+    }
+
+    const placeAlongWall = (wall: 'left' | 'right' | 'top' | 'bottom', seats: Seat[]) => {
+      if (seats.length === 0) return
+      const axisLen = wall === 'left' || wall === 'right' ? room.height - 2 * (wallMargin + seatRadius) : room.width - 2 * (wallMargin + seatRadius)
+      const maxPerRowWall = Math.max(1, Math.floor(axisLen / seatPitch) + 1)
+      let idx = 0
+      for (let r = 0; idx < seats.length && r < 40; r++) {
+        const remain = seats.length - idx
+        const k = Math.min(maxPerRowWall, remain)
+        const start = (axisLen - (k - 1) * seatPitch) / 2
+        for (let i = 0; i < k; i++) {
+          const t = start + i * seatPitch
+          const s = seats[idx++]!
+          if (wall === 'left') {
+            const x = room.x + wallMargin + seatRadius + r * seatPitch
+            const y = room.y + wallMargin + seatRadius + t
+            laidOut[s.id] = { x: clamp(seatSnap(x, gridSize), minX, maxX), y: clamp(seatSnap(y, gridSize), minY, maxY) }
+          } else if (wall === 'right') {
+            const x = room.x + room.width - wallMargin - seatRadius - r * seatPitch
+            const y = room.y + wallMargin + seatRadius + t
+            laidOut[s.id] = { x: clamp(seatSnap(x, gridSize), minX, maxX), y: clamp(seatSnap(y, gridSize), minY, maxY) }
+          } else if (wall === 'top') {
+            const x = room.x + wallMargin + seatRadius + t
+            const y = room.y + wallMargin + seatRadius + r * seatPitch
+            laidOut[s.id] = { x: clamp(seatSnap(x, gridSize), minX, maxX), y: clamp(seatSnap(y, gridSize), minY, maxY) }
+          } else {
+            const x = room.x + wallMargin + seatRadius + t
+            const y = room.y + room.height - wallMargin - seatRadius - r * seatPitch
+            laidOut[s.id] = { x: clamp(seatSnap(x, gridSize), minX, maxX), y: clamp(seatSnap(y, gridSize), minY, maxY) }
+          }
+        }
+      }
+    }
+
+    placeAlongWall('left', byWall.left)
+    placeAlongWall('right', byWall.right)
+    placeAlongWall('top', byWall.top)
+    placeAlongWall('bottom', byWall.bottom)
   }
 
   const avoidDoor = (p: { x: number; y: number }) => {

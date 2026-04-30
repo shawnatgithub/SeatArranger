@@ -345,11 +345,23 @@ export const VenueCanvas = (props: VenueCanvasProps) => {
                 onDragEnd={(e) => {
                   const posCanvas = e.target.position()
                   const posWorld = toWorld(template, posCanvas)
-                  const xWorld = clamp(snap(posWorld.x, gridSize), scene.room.x + radius, scene.room.x + scene.room.width - radius)
-                  const yWorld = clamp(snap(posWorld.y, gridSize), scene.room.y + radius, scene.room.y + scene.room.height - radius)
-                  const nextCanvas = toCanvas(template, { x: xWorld, y: yWorld })
+                  const snapSeat = (v: number) => Math.round(v / (gridSize / 2)) * (gridSize / 2)
+                  const x0 = clamp(snapSeat(posWorld.x), scene.room.x + radius, scene.room.x + scene.room.width - radius)
+                  const y0 = clamp(snapSeat(posWorld.y), scene.room.y + radius, scene.room.y + scene.room.height - radius)
+
+                  const ov = props.seatOverrides ?? {}
+                  const safeScene = buildLayoutScene({
+                    template,
+                    gridSize,
+                    roomPadding,
+                    seatOverrides: { ...ov, [s.id]: { x: x0, y: y0 } },
+                    elementOverrides: props.elementOverrides,
+                    seatCount: props.seatCount,
+                  })
+                  const safe = safeScene.seats.find((it) => it.id === s.id) ?? { id: s.id, x: x0, y: y0 }
+                  const nextCanvas = toCanvas(template, { x: safe.x, y: safe.y })
                   e.target.position(nextCanvas)
-                  onSeatDragEnd?.(s.id, { x: xWorld, y: yWorld })
+                  onSeatDragEnd?.(s.id, { x: safe.x, y: safe.y })
                 }}
                 onClick={() => onSeatClick?.(s.id)}
                 onTap={() => onSeatClick?.(s.id)}

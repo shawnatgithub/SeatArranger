@@ -45,6 +45,14 @@ export const HomeVenueSimulator = (props: HomeVenueSimulatorProps) => {
 
   const step3GenerateSeats = () => {
     if (!template) return
+    if (!template.elements.some((e) => e.type === 'table')) {
+      const room = getDefaultRoom(template, ROOM_PADDING)
+      const tables = generateTablesForLayout({ layoutId, room, peopleCount })
+      const anchors = template.elements.filter((e) => e.type === 'screen' || e.type === 'entrance' || e.type === 'window')
+      setTemplate({ ...template, elements: [...anchors, ...tables], seats: [] })
+      setSeatOverrides(undefined)
+      setSeatLabelOverrides(undefined)
+    }
     setSeatCount(Math.max(1, Math.floor(peopleCount)))
     setSeatOverrides(undefined)
   }

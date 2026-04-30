@@ -67,7 +67,7 @@ describe('buildLayoutScene', () => {
       name: 't',
       canvasWidth: 900,
       canvasHeight: 600,
-      elements: [{ id: 'table-1', type: 'table', x: -200, y: -100, width: 400, height: 200 }],
+      elements: [{ id: 'table-1', type: 'table', x: -200, y: -120, width: 400, height: 240 }],
       seats: [
         { id: 'l1', x: -210, y: -50, zone: 'host' },
         { id: 'l2', x: -210, y: 0, zone: 'host' },
