@@ -18,10 +18,12 @@ export type VenueRules = {
   tableTableGapM: number
 
   door: {
+    count: number
     lengthM: number
     thicknessM: number
     wall: Wall
-    cornerMarginM: number
+    cornerInsetM: number
+    minGapM: number
   }
 
   window: {
@@ -64,10 +66,12 @@ export const defaultVenueRules: VenueRules = {
   tableTableGapM: 0.8,
 
   door: {
+    count: 2,
     lengthM: 1.0,
     thicknessM: 0.2,
     wall: 'right',
-    cornerMarginM: 0.5,
+    cornerInsetM: 0.4,
+    minGapM: 0.2,
   },
 
   window: {

@@ -50,8 +50,6 @@ const buildAnchors = (args: { roomW: number; roomH: number; widthM: number; heig
   const roomY = -args.roomH / 2
   const room = { x: roomX, y: roomY, width: args.roomW, height: args.roomH }
 
-  const wallMarginPx = metersToPx(defaultVenueRules.wallMarginM)
-
   const screenLenM = defaultVenueRules.screen.lengthM({ widthM: args.widthM, heightM: args.heightM })
   const screenLenPx = snapStep(metersToPx(screenLenM))
   const screenThPx = snapStep(metersToPx(defaultVenueRules.screen.thicknessM))
@@ -62,17 +60,21 @@ const buildAnchors = (args: { roomW: number; roomH: number; widthM: number; heig
 
   const doorLenPx = snapStep(metersToPx(defaultVenueRules.door.lengthM))
   const doorThPx = snapStep(metersToPx(defaultVenueRules.door.thicknessM))
-  const doorCornerPx = metersToPx(defaultVenueRules.door.cornerMarginM)
+  const doorCount = defaultVenueRules.door.count
+  const doorInsetPx0 = metersToPx(defaultVenueRules.door.cornerInsetM)
+  const doorMinGapPx0 = metersToPx(defaultVenueRules.door.minGapM)
 
-  const screenWall = defaultVenueRules.screen.wall
-  const doorWall = defaultVenueRules.door.wall
+  const allWalls: Array<'bottom' | 'left' | 'right' | 'top'> = ['top', 'right', 'bottom', 'left']
+  const wantedDoorWall = defaultVenueRules.door.wall
+  const wantedScreenWall = defaultVenueRules.screen.wall
   const wantedWindowWall = defaultVenueRules.window.wall
+
+  const doorWall = wantedDoorWall
+  const screenWall = wantedScreenWall !== doorWall ? wantedScreenWall : allWalls.find((w) => w !== doorWall) ?? 'top'
   const windowWall =
-    wantedWindowWall !== doorWall
+    wantedWindowWall !== doorWall && wantedWindowWall !== screenWall
       ? wantedWindowWall
-      : (['bottom', 'left', 'right', 'top'] as const).find((w) => w !== doorWall && w !== screenWall) ??
-        (['bottom', 'left', 'right', 'top'] as const).find((w) => w !== doorWall) ??
-        'bottom'
+      : allWalls.find((w) => w !== doorWall && w !== screenWall) ?? 'bottom'
 
   const placeOnWall = (args: {
     id: string
@@ -80,53 +82,55 @@ const buildAnchors = (args: { roomW: number; roomH: number; widthM: number; heig
     wall: typeof doorWall
     lengthPx: number
     thicknessPx: number
-    cornerBias?: { cornerMarginPx: number; toward: 'start' | 'end' }
+    tangentialStartPx?: number
   }): VenueElement => {
-    const { id, type, wall, lengthPx, thicknessPx, cornerBias } = args
+    const { id, type, wall, lengthPx, thicknessPx, tangentialStartPx } = args
     if (wall === 'top') {
-      const x = snapMajor(room.x + (room.width - lengthPx) / 2)
-      const y = room.y + wallMarginPx
+      const x = snapMajor(room.x + (tangentialStartPx ?? (room.width - lengthPx) / 2))
+      const y = room.y
       return { id, type, x, y, width: lengthPx, height: thicknessPx }
     }
     if (wall === 'bottom') {
-      const x = snapMajor(room.x + (room.width - lengthPx) / 2)
-      const y = room.y + room.height - thicknessPx - wallMarginPx
+      const x = snapMajor(room.x + (tangentialStartPx ?? (room.width - lengthPx) / 2))
+      const y = room.y + room.height - thicknessPx
       return { id, type, x, y, width: lengthPx, height: thicknessPx }
     }
     if (wall === 'left') {
-      const x = room.x + wallMarginPx
-      const y = snapMajor(room.y + (room.height - lengthPx) / 2)
-      if (cornerBias) {
-        const base = cornerBias.toward === 'end' ? room.y + room.height - lengthPx - cornerBias.cornerMarginPx : room.y + cornerBias.cornerMarginPx
-        return { id, type, x, y: snapMajor(base), width: thicknessPx, height: lengthPx }
-      }
+      const x = room.x
+      const y = snapMajor(room.y + (tangentialStartPx ?? (room.height - lengthPx) / 2))
       return { id, type, x, y, width: thicknessPx, height: lengthPx }
     }
-    const x = room.x + room.width - thicknessPx - wallMarginPx
-    const y = snapMajor(room.y + (room.height - lengthPx) / 2)
-    if (cornerBias) {
-      const base = cornerBias.toward === 'end' ? room.y + room.height - lengthPx - cornerBias.cornerMarginPx : room.y + cornerBias.cornerMarginPx
-      return { id, type, x, y: snapMajor(base), width: thicknessPx, height: lengthPx }
-    }
+    const x = room.x + room.width - thicknessPx
+    const y = snapMajor(room.y + (tangentialStartPx ?? (room.height - lengthPx) / 2))
     return { id, type, x, y, width: thicknessPx, height: lengthPx }
   }
 
   const screen = placeOnWall({ id: 'screen-1', type: 'screen', wall: screenWall, lengthPx: screenLenPx, thicknessPx: screenThPx })
   const window = placeOnWall({ id: 'window-1', type: 'window', wall: windowWall, lengthPx: windowLenPx, thicknessPx: windowThPx })
 
-  const door =
-    doorWall === 'left' || doorWall === 'right'
-      ? placeOnWall({
-          id: 'entrance-1',
-          type: 'entrance',
-          wall: doorWall,
-          lengthPx: doorLenPx,
-          thicknessPx: doorThPx,
-          cornerBias: { cornerMarginPx: doorCornerPx, toward: 'end' },
-        })
-      : placeOnWall({ id: 'entrance-1', type: 'entrance', wall: doorWall, lengthPx: doorLenPx, thicknessPx: doorThPx })
+  const wallLen = doorWall === 'top' || doorWall === 'bottom' ? room.width : room.height
+  const desiredInset = Math.max(0, snapStep(doorInsetPx0))
+  const desiredGap = Math.max(0, snapStep(doorMinGapPx0))
+  const need = doorCount * doorLenPx + Math.max(0, doorCount - 1) * desiredGap
+  const inset = need <= wallLen ? Math.min(desiredInset, (wallLen - need) / 2) : 0
 
-  return [screen, window, door]
+  const doorStarts =
+    doorCount <= 1
+      ? [Math.max(0, (wallLen - doorLenPx) / 2)]
+      : [inset, Math.max(inset, wallLen - inset - doorLenPx)]
+
+  const doors = doorStarts.slice(0, doorCount).map((s, i) =>
+    placeOnWall({
+      id: `entrance-${i + 1}`,
+      type: 'entrance',
+      wall: doorWall,
+      lengthPx: doorLenPx,
+      thicknessPx: doorThPx,
+      tangentialStartPx: s,
+    }),
+  )
+
+  return [screen, window, ...doors]
 }
 
 export const buildRoomTemplate = (args: { peopleCount: number; shape: RoomShape }): VenueTemplate => {

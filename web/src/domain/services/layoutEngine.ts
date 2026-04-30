@@ -460,51 +460,85 @@ export const buildLayoutScene = (args: {
   const hasEntrance = baseElements.some((e) => e.type === 'entrance')
   const hasWindow = baseElements.some((e) => e.type === 'window')
 
-  if (!hasScreen) {
-    const h = snap(Math.max(120, room.height * 0.3), gridSize)
-    const w = snap(20, gridSize)
-    baseElements.push({
-      id: 'auto-screen',
-      type: 'screen',
-      x: room.x + snap(10, gridSize),
-      y: snap(-h / 2, gridSize),
-      width: w,
-      height: h,
-    })
+  const metersPer1mPx = metersToPx(1)
+  const widthM = room.width / metersPer1mPx
+  const heightM = room.height / metersPer1mPx
+
+  const allWalls: RoomWall[] = ['top', 'right', 'bottom', 'left']
+  const wantedDoorWall = defaultVenueRules.door.wall
+  const wantedScreenWall = defaultVenueRules.screen.wall
+  const wantedWindowWall = defaultVenueRules.window.wall
+  const doorWall: RoomWall = wantedDoorWall
+  const screenWall: RoomWall = wantedScreenWall !== doorWall ? wantedScreenWall : allWalls.find((w) => w !== doorWall) ?? 'top'
+  const windowWall: RoomWall =
+    wantedWindowWall !== doorWall && wantedWindowWall !== screenWall ? wantedWindowWall : allWalls.find((w) => w !== doorWall && w !== screenWall) ?? 'bottom'
+
+  const placeOnWall = (args: {
+    id: string
+    type: VenueElement['type']
+    wall: RoomWall
+    lengthPx: number
+    thicknessPx: number
+    tangentialStartPx?: number
+  }): VenueElement => {
+    const { id, type, wall, lengthPx, thicknessPx, tangentialStartPx } = args
+    if (wall === 'top') {
+      return { id, type, x: snap(room.x + (tangentialStartPx ?? (room.width - lengthPx) / 2), gridSize), y: room.y, width: lengthPx, height: thicknessPx }
+    }
+    if (wall === 'bottom') {
+      return {
+        id,
+        type,
+        x: snap(room.x + (tangentialStartPx ?? (room.width - lengthPx) / 2), gridSize),
+        y: room.y + room.height - thicknessPx,
+        width: lengthPx,
+        height: thicknessPx,
+      }
+    }
+    if (wall === 'left') {
+      return { id, type, x: room.x, y: snap(room.y + (tangentialStartPx ?? (room.height - lengthPx) / 2), gridSize), width: thicknessPx, height: lengthPx }
+    }
+    return {
+      id,
+      type,
+      x: room.x + room.width - thicknessPx,
+      y: snap(room.y + (tangentialStartPx ?? (room.height - lengthPx) / 2), gridSize),
+      width: thicknessPx,
+      height: lengthPx,
+    }
   }
 
-  if (!hasEntrance) {
-    const w = snap(56, gridSize)
-    const h = snap(18, gridSize)
-    baseElements.push({
-      id: 'auto-entrance-left',
-      type: 'entrance',
-      x: room.x + snap(40, gridSize),
-      y: room.y + room.height - h - snap(8, gridSize),
-      width: w,
-      height: h,
-    })
-    baseElements.push({
-      id: 'auto-entrance-right',
-      type: 'entrance',
-      x: room.x + room.width - w - snap(40, gridSize),
-      y: room.y + room.height - h - snap(8, gridSize),
-      width: w,
-      height: h,
-    })
+  if (!hasScreen) {
+    const screenLenPx = snapStep(metersToPx(defaultVenueRules.screen.lengthM({ widthM, heightM })))
+    const screenThPx = snapStep(metersToPx(defaultVenueRules.screen.thicknessM))
+    baseElements.push(placeOnWall({ id: 'auto-screen', type: 'screen', wall: screenWall, lengthPx: screenLenPx, thicknessPx: screenThPx }))
   }
 
   if (!hasWindow) {
-    const windowW = snap(room.width * 0.5, gridSize)
-    const windowH = snap(12, gridSize)
-    baseElements.push({
-      id: 'auto-window',
-      type: 'window',
-      x: snap(-windowW / 2, gridSize),
-      y: room.y + snap(10, gridSize),
-      width: windowW,
-      height: windowH,
-    })
+    const windowLenPx = snapStep(metersToPx(defaultVenueRules.window.lengthM({ widthM, heightM })))
+    const windowThPx = snapStep(metersToPx(defaultVenueRules.window.thicknessM))
+    baseElements.push(placeOnWall({ id: 'auto-window', type: 'window', wall: windowWall, lengthPx: windowLenPx, thicknessPx: windowThPx }))
+  }
+
+  if (!hasEntrance) {
+    const doorLenPx = snapStep(metersToPx(defaultVenueRules.door.lengthM))
+    const doorThPx = snapStep(metersToPx(defaultVenueRules.door.thicknessM))
+    const doorCount = defaultVenueRules.door.count
+    const insetPx0 = snapStep(metersToPx(defaultVenueRules.door.cornerInsetM))
+    const gapPx0 = snapStep(metersToPx(defaultVenueRules.door.minGapM))
+    const wallLen = doorWall === 'top' || doorWall === 'bottom' ? room.width : room.height
+    const need = doorCount * doorLenPx + Math.max(0, doorCount - 1) * gapPx0
+    const inset = need <= wallLen ? Math.min(insetPx0, (wallLen - need) / 2) : 0
+    const starts =
+      doorCount <= 1
+        ? [Math.max(0, (wallLen - doorLenPx) / 2)]
+        : [inset, Math.max(inset, wallLen - inset - doorLenPx)]
+    baseElements.push(placeOnWall({ id: 'auto-entrance-left', type: 'entrance', wall: doorWall, lengthPx: doorLenPx, thicknessPx: doorThPx, tangentialStartPx: starts[0] }))
+    if (doorCount > 1) {
+      baseElements.push(
+        placeOnWall({ id: 'auto-entrance-right', type: 'entrance', wall: doorWall, lengthPx: doorLenPx, thicknessPx: doorThPx, tangentialStartPx: starts[1] }),
+      )
+    }
   }
 
   const baseById = new Map(baseElements.map((e) => [e.id, e]))
@@ -590,7 +624,63 @@ export const buildLayoutScene = (args: {
     return { ...e, x: res.x, y: res.y, width: res.width, height: res.height }
   })
 
-  const snappedOthers = snappedAnchors.map((e) =>
+  const resolveAnchorOverlaps = (elements: VenueElement[]) => {
+    const gapFor = (e: VenueElement) => (e.type === 'entrance' ? metersToPx(defaultVenueRules.door.minGapM) : 0)
+    const clampToWall = (wall: RoomWall, e: VenueElement, start: number) => {
+      const len = wall === 'top' || wall === 'bottom' ? e.width : e.height
+      const min = wall === 'top' || wall === 'bottom' ? room.x : room.y
+      const max = (wall === 'top' || wall === 'bottom' ? room.x + room.width : room.y + room.height) - len
+      return clamp(snap(start, gridSize), min, max)
+    }
+    const setStart = (wall: RoomWall, e: VenueElement, start: number) => {
+      const s = clampToWall(wall, e, start)
+      if (wall === 'top') return { ...e, x: s, y: room.y }
+      if (wall === 'bottom') return { ...e, x: s, y: room.y + room.height - e.height }
+      if (wall === 'left') return { ...e, x: room.x, y: s }
+      return { ...e, x: room.x + room.width - e.width, y: s }
+    }
+
+    const anchors = elements.filter(isAnchor)
+    const others = elements.filter((e) => !isAnchor(e))
+    const byWall = new Map<RoomWall, VenueElement[]>()
+    for (const a of anchors) {
+      const wall = inferWall(room, a)
+      byWall.set(wall, [...(byWall.get(wall) ?? []), a])
+    }
+
+    const resolved: VenueElement[] = []
+    for (const [wall, list] of byWall.entries()) {
+      const sorted = [...list].sort((a, b) => {
+        const sa = wall === 'top' || wall === 'bottom' ? a.x : a.y
+        const sb = wall === 'top' || wall === 'bottom' ? b.x : b.y
+        return sa - sb || a.id.localeCompare(b.id)
+      })
+      const lenOf = (e: VenueElement) => (wall === 'top' || wall === 'bottom' ? e.width : e.height)
+      const startOf = (e: VenueElement) => (wall === 'top' || wall === 'bottom' ? e.x : e.y)
+
+      const cur = sorted.map((e) => setStart(wall, e, startOf(e)))
+      for (let i = 1; i < cur.length; i++) {
+        const prev = cur[i - 1]!
+        const e = cur[i]!
+        const need = startOf(prev) + lenOf(prev) + Math.max(gapFor(prev), gapFor(e))
+        if (startOf(e) < need) cur[i] = setStart(wall, e, need)
+      }
+      for (let i = cur.length - 2; i >= 0; i--) {
+        const next = cur[i + 1]!
+        const e = cur[i]!
+        const gap = Math.max(gapFor(next), gapFor(e))
+        const maxEnd = startOf(next) - gap
+        const end = startOf(e) + lenOf(e)
+        if (end > maxEnd) cur[i] = setStart(wall, e, maxEnd - lenOf(e))
+      }
+      resolved.push(...cur)
+    }
+    return [...others, ...resolved]
+  }
+
+  const snappedAnchorResolved = resolveAnchorOverlaps(snappedAnchors)
+
+  const snappedOthers = snappedAnchorResolved.map((e) =>
     isAnchor(e) ? e : { ...e, width: Math.max(gridSize, snap(e.width, gridSize)), height: Math.max(gridSize, snap(e.height, gridSize)) },
   )
 
