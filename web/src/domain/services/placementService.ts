@@ -10,17 +10,11 @@ import { STRATEGY_NAME, findHostLeader, findVipPeople, isVipRole } from '@/domai
 import { resolveMainSeatId } from '@/domain/rules/mainSeatResolver'
 import { buildLayoutScene } from '@/domain/services/layoutEngine'
 
-const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-  (a.x - b.x) ** 2 + (a.y - b.y) ** 2
-
 const stablePersonSort = (people: Person[]) =>
   people
     .map((p, index) => ({ p, index }))
     .sort((a, b) => b.p.rank - a.p.rank || a.index - b.index || a.p.id.localeCompare(b.p.id))
     .map(({ p }) => p)
-
-const stableSeatSort = (seats: Seat[]) =>
-  [...seats].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id))
 
 const seatById = (template: VenueTemplate) => new Map(template.seats.map((s) => [s.id, s]))
 
@@ -63,38 +57,130 @@ const normalizeLockedAssignments = (
   return { normalized, warnings }
 }
 
-const pickBestSeatId = (args: {
+type TableEdge = 'left' | 'right' | 'top' | 'bottom'
+
+const oppositeEdge = (e: TableEdge): TableEdge => (e === 'top' ? 'bottom' : e === 'bottom' ? 'top' : e === 'left' ? 'right' : 'left')
+
+const leftRightEdgesFromFacing = (facing: { x: number; y: number }): { leftEdge: TableEdge; rightEdge: TableEdge } => {
+  const len2 = facing.x * facing.x + facing.y * facing.y
+  const fx = len2 < 1e-6 ? -1 : facing.x
+  const fy = len2 < 1e-6 ? 0 : facing.y
+  const leftNormal = { x: -fy, y: fx }
+  const dots = [
+    { edge: 'left' as const, d: -leftNormal.x },
+    { edge: 'right' as const, d: leftNormal.x },
+    { edge: 'top' as const, d: -leftNormal.y },
+    { edge: 'bottom' as const, d: leftNormal.y },
+  ]
+  const leftEdge = [...dots].sort((a, b) => b.d - a.d)[0]!.edge
+  const rightEdge = [...dots].sort((a, b) => a.d - b.d)[0]!.edge
+  return { leftEdge, rightEdge }
+}
+
+const edgeKeyForSeat = (table: { x: number; y: number; width: number; height: number }, s: { x: number; y: number }): TableEdge => {
+  const dxL = Math.abs(s.x - table.x)
+  const dxR = Math.abs(s.x - (table.x + table.width))
+  const dyT = Math.abs(s.y - table.y)
+  const dyB = Math.abs(s.y - (table.y + table.height))
+  return [
+    { e: 'left' as const, d: dxL },
+    { e: 'right' as const, d: dxR },
+    { e: 'top' as const, d: dyT },
+    { e: 'bottom' as const, d: dyB },
+  ].sort((a, b) => a.d - b.d)[0]!.e
+}
+
+const alternationOrder = (count: number, centerIndex: number) => {
+  if (count <= 0) return []
+  const out: number[] = []
+  out.push(centerIndex)
+  for (let d = 1; out.length < count; d++) {
+    const a = centerIndex + d
+    const b = centerIndex - d
+    if (a < count) out.push(a)
+    if (out.length >= count) break
+    if (b >= 0) out.push(b)
+  }
+  return out
+}
+
+const buildCeremonySeatOrder = (args: {
   seats: Seat[]
-  person: Person
-  mainSeat: Seat
+  tables: { id: string; x: number; y: number; width: number; height: number }[]
   screen?: { x: number; y: number }
+  mainSeatId: string
 }) => {
-  const { seats, person, mainSeat, screen } = args
+  const { seats, tables, screen, mainSeatId } = args
+  const mainSeat = seats.find((s) => s.id === mainSeatId)
+  if (!mainSeat || tables.length === 0) return seats.map((s) => s.id).sort()
 
-  const zoneBonus =
-    person.side === 'host'
-      ? (s: Seat) => (s.zone === 'host' ? 1_000_000 : s.zone === 'neutral' ? 100_000 : 0)
-      : (s: Seat) => (s.zone === 'guest' ? 1_000_000 : s.zone === 'neutral' ? 100_000 : 0)
-
-  const roleBonus = (s: Seat) => {
-    if (!screen) return 0
-    const hasPresenterOrHoster = person.roles.includes('presenter') || person.roles.includes('hoster')
-    if (!hasPresenterOrHoster) return 0
-    const d = dist2(s, screen)
-    return Math.max(0, 500_000 - d)
+  const distToRect2 = (s: { x: number; y: number }, t: { x: number; y: number; width: number; height: number }) => {
+    const dx = s.x < t.x ? t.x - s.x : s.x > t.x + t.width ? s.x - (t.x + t.width) : 0
+    const dy = s.y < t.y ? t.y - s.y : s.y > t.y + t.height ? s.y - (t.y + t.height) : 0
+    return dx * dx + dy * dy
   }
 
-  const symmetryBonus = (s: Seat) => -Math.abs(s.x) * 200
+  const mainTable =
+    [...tables].sort((a, b) => distToRect2(mainSeat, a) - distToRect2(mainSeat, b) || b.width * b.height - a.width * a.height || a.id.localeCompare(b.id))[0]!
 
-  const score = (s: Seat) => {
-    const dMain = dist2(s, mainSeat)
-    const mainProximity = Math.max(0, 800_000 - dMain)
-    return zoneBonus(s) + roleBonus(s) + mainProximity + symmetryBonus(s)
+  const startEdge = edgeKeyForSeat(mainTable, mainSeat)
+  const tc = { x: mainTable.x + mainTable.width / 2, y: mainTable.y + mainTable.height / 2 }
+  const sc = screen ?? { x: tc.x, y: tc.y - 1 }
+  const facing = { x: sc.x - tc.x, y: sc.y - tc.y }
+  const { leftEdge, rightEdge } = leftRightEdgesFromFacing(facing)
+  const edgeSeq: TableEdge[] = [startEdge, oppositeEdge(startEdge), leftEdge, rightEdge].filter((v, i, arr) => arr.indexOf(v) === i)
+
+  const seatsOnEdge = (edge: TableEdge) => {
+    const list = seats.filter((s) => edgeKeyForSeat(mainTable, s) === edge)
+    const t = (s: Seat) => (edge === 'top' || edge === 'bottom' ? s.x : s.y)
+    return list.map((s) => ({ s, t: t(s) })).sort((a, b) => a.t - b.t || a.s.id.localeCompare(b.s.id))
   }
 
-  return seats
-    .map((s) => ({ s, score: score(s) }))
-    .sort((a, b) => b.score - a.score || a.s.y - b.s.y || a.s.x - b.s.x || a.s.id.localeCompare(b.s.id))[0]?.s.id
+  const orderForEdge = (edge: TableEdge, prefer: { x: number; y: number }) => {
+    const list = seatsOnEdge(edge)
+    if (list.length === 0) return []
+    const target = edge === 'top' || edge === 'bottom' ? prefer.x : prefer.y
+    let centerIndex = 0
+    for (let i = 1; i < list.length; i++) {
+      const d0 = Math.abs(list[centerIndex]!.t - target)
+      const d1 = Math.abs(list[i]!.t - target)
+      if (d1 < d0) centerIndex = i
+    }
+    const idx = alternationOrder(list.length, centerIndex)
+    return idx.map((i) => list[i]!.s.id)
+  }
+
+  const prefer0 = { x: mainSeat.x, y: mainSeat.y }
+  const out: string[] = []
+  for (const e of edgeSeq) out.push(...orderForEdge(e, prefer0))
+  const uniq: string[] = []
+  const seen = new Set<string>()
+  for (const id of out) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    uniq.push(id)
+  }
+  for (const s of seats) if (!seen.has(s.id)) uniq.push(s.id)
+  return uniq
+}
+
+const pickNextSeatId = (args: {
+  seatOrder: string[]
+  seatById: Map<string, Seat>
+  usedSeats: Set<string>
+  person: Person
+}) => {
+  const { seatOrder, seatById, usedSeats, person } = args
+  const seats = seatOrder.map((id) => seatById.get(id)).filter(Boolean) as Seat[]
+
+  const byZone = (zone: Seat['zone']) => seats.filter((s) => s.zone === zone && !usedSeats.has(s.id)).map((s) => s.id)
+  const neutral = seats.filter((s) => s.zone === 'neutral' && !usedSeats.has(s.id)).map((s) => s.id)
+  const any = seats.filter((s) => !usedSeats.has(s.id)).map((s) => s.id)
+
+  if (person.roles.some(isVipRole)) return any[0]
+
+  if (person.side === 'host') return byZone('host')[0] ?? neutral[0] ?? any[0]
+  return byZone('guest')[0] ?? neutral[0] ?? any[0]
 }
 
 export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
@@ -131,16 +217,15 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
     errors.push('无法确定主位，请检查模板是否包含座位。')
   }
 
-  const screenEl = template.elements.find((e) => e.type === 'screen')
   const scene = buildLayoutScene({ template })
-  const screenAuto = scene.elements.find((e) => e.type === 'screen')
-  const screenEl2 = screenEl ?? screenAuto
-  const screen = screenEl2 ? { x: screenEl2.x + screenEl2.width / 2, y: screenEl2.y + screenEl2.height / 2 } : undefined
+  const screenEl = scene.elements.find((e) => e.type === 'screen')
+  const screen = screenEl ? { x: screenEl.x + screenEl.width / 2, y: screenEl.y + screenEl.height / 2 } : undefined
+  const tables = scene.elements.filter((e) => e.type === 'table')
 
   const usedPeople = new Set(locked.map((a) => a.personId))
   const usedSeats = new Set(locked.map((a) => a.seatId))
 
-  const freeSeats = stableSeatSort(template.seats.filter((s) => !usedSeats.has(s.id)))
+  const sceneSeatById = new Map(scene.seats.map((s) => [s.id, s]))
   const assignments: Assignment[] = [...locked]
 
   const addExplain = (personId: string, reasons: string[]) => {
@@ -157,6 +242,11 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
 
   const strategyName = STRATEGY_NAME[strategyId]
 
+  const seatOrder =
+    mainSeatId && sceneSeatById.has(mainSeatId)
+      ? buildCeremonySeatOrder({ seats: scene.seats, tables, screen, mainSeatId })
+      : scene.seats.map((s) => s.id).sort()
+
   if (vipPrimary && mainSeat && !usedPeople.has(vipPrimary.id) && !usedSeats.has(mainSeat.id)) {
     takeSeat(vipPrimary, mainSeat.id)
     addExplain(vipPrimary.id, [`${strategyName}：主宾/上级优先落在主位。`])
@@ -164,17 +254,9 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
 
   const hostLeader = findHostLeader(people)
   if (hostLeader && mainSeat && !usedPeople.has(hostLeader.id)) {
-    const hostFreeSeats = freeSeats.filter((s) => !usedSeats.has(s.id))
-    const best = pickBestSeatId({
-      seats: hostFreeSeats.filter((s) => s.id !== mainSeat.id),
-      person: hostLeader,
-      mainSeat,
-      screen,
-    })
-    if (best) {
-      takeSeat(hostLeader, best)
-      addExplain(hostLeader.id, [`${strategyName}：主人方最高职级优先靠近主位便于陪同与沟通。`])
-    }
+    const best = pickNextSeatId({ seatOrder: seatOrder.filter((id) => id !== mainSeat.id), seatById: sceneSeatById, usedSeats, person: hostLeader })
+    if (best) takeSeat(hostLeader, best)
+    addExplain(hostLeader.id, [`${strategyName}：主人方最高职级优先靠近主位便于陪同与沟通。`])
   }
 
   const remaining = stablePersonSort(
@@ -192,13 +274,7 @@ export const arrangeSeats = (input: ArrangeInput): ArrangeOutput => {
   for (const person of remaining) {
     if (!mainSeat) break
 
-    const available = freeSeats.filter((s) => !usedSeats.has(s.id))
-    const best = pickBestSeatId({
-      seats: available,
-      person,
-      mainSeat,
-      screen,
-    })
+    const best = pickNextSeatId({ seatOrder, seatById: sceneSeatById, usedSeats, person })
     if (!best) break
 
     takeSeat(person, best)

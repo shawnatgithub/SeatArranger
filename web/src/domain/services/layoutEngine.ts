@@ -20,6 +20,75 @@ const dist2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x
 const snapStep = (v: number) => snapPx(v, SNAP_STEP_PX)
 const seatSnap = (v: number, gridSize: number) => snapPx(v, Math.max(1, Math.round(gridSize / 2)))
 
+type TableEdge = 'left' | 'right' | 'top' | 'bottom'
+type SeatSlot = { tableId: string; edge: TableEdge; x: number; y: number; t: number }
+
+const oppositeEdge = (e: TableEdge): TableEdge => (e === 'top' ? 'bottom' : e === 'bottom' ? 'top' : e === 'left' ? 'right' : 'left')
+
+const slotOrderIndices = (count: number, centerIndex: number) => {
+  if (count <= 0) return []
+  const out: number[] = []
+  out.push(centerIndex)
+  for (let d = 1; out.length < count; d++) {
+    const a = centerIndex + d
+    const b = centerIndex - d
+    if (a < count) out.push(a)
+    if (out.length >= count) break
+    if (b >= 0) out.push(b)
+  }
+  return out
+}
+
+const buildTableEdgeSlots = (args: {
+  table: VenueElement
+  edge: TableEdge
+  seatPitch: number
+  rowOffset0: number
+  gridSize: number
+}): SeatSlot[] => {
+  const { table, edge, seatPitch, rowOffset0, gridSize } = args
+  const edgeLen = edge === 'left' || edge === 'right' ? table.height : table.width
+  const n = Math.max(1, Math.floor(edgeLen / seatPitch) + 1)
+  const start = (edgeLen - (n - 1) * seatPitch) / 2
+  const slots: SeatSlot[] = []
+  for (let i = 0; i < n; i++) {
+    const off = start + i * seatPitch
+    if (edge === 'top') {
+      const x = seatSnap(table.x + off, gridSize)
+      const y = seatSnap(table.y - rowOffset0, gridSize)
+      slots.push({ tableId: table.id, edge, x, y, t: x })
+    } else if (edge === 'bottom') {
+      const x = seatSnap(table.x + off, gridSize)
+      const y = seatSnap(table.y + table.height + rowOffset0, gridSize)
+      slots.push({ tableId: table.id, edge, x, y, t: x })
+    } else if (edge === 'left') {
+      const x = seatSnap(table.x - rowOffset0, gridSize)
+      const y = seatSnap(table.y + off, gridSize)
+      slots.push({ tableId: table.id, edge, x, y, t: y })
+    } else {
+      const x = seatSnap(table.x + table.width + rowOffset0, gridSize)
+      const y = seatSnap(table.y + off, gridSize)
+      slots.push({ tableId: table.id, edge, x, y, t: y })
+    }
+  }
+  return slots
+}
+
+const chooseSlotsOnEdge = (slots: SeatSlot[], want: number) => {
+  const n = slots.length
+  if (n === 0 || want <= 0) return []
+  const centerT = (slots[0]!.t + slots[n - 1]!.t) / 2
+  let centerIndex = 0
+  for (let i = 1; i < n; i++) {
+    const d0 = Math.abs(slots[centerIndex]!.t - centerT)
+    const d1 = Math.abs(slots[i]!.t - centerT)
+    if (d1 < d0) centerIndex = i
+  }
+  const order = slotOrderIndices(n, centerIndex)
+  const pickedIdx = order.slice(0, Math.min(want, n))
+  return pickedIdx.map((i) => slots[i]!)
+}
+
 const rotate = (p: { x: number; y: number }, rad: number) => {
   const c = Math.cos(rad)
   const s = Math.sin(rad)
@@ -292,30 +361,13 @@ const layoutSeatsOnTables = (args: {
     const n = sorted.length
     if (n === 0) continue
 
-    const edgeLength = edge === 'left' || edge === 'right' ? table.height : table.width
-    const maxPerRow = Math.max(1, Math.floor(edgeLength / seatPitch))
-    const k = Math.min(maxPerRow, n)
+    const edgeSlots = buildTableEdgeSlots({ table, edge, seatPitch, rowOffset0, gridSize })
+    const picked = chooseSlotsOnEdge(edgeSlots, n)
+    const k = picked.length
     const remain = n - k
-    if (edge === 'left' || edge === 'right') {
-      const x = edge === 'left' ? table.x - rowOffset0 : table.x + table.width + rowOffset0
-      for (let i = 0; i < k; i++) {
-        const start = (table.height - (k - 1) * seatPitch) / 2
-        const y = table.y + start + i * seatPitch
-        laidOut[sorted[i]!.id] = {
-          x: clamp(seatSnap(x, gridSize), minX, maxX),
-          y: clamp(seatSnap(y, gridSize), minY, maxY),
-        }
-      }
-    } else {
-      const y = edge === 'top' ? table.y - rowOffset0 : table.y + table.height + rowOffset0
-      for (let i = 0; i < k; i++) {
-        const start = (table.width - (k - 1) * seatPitch) / 2
-        const x = table.x + start + i * seatPitch
-        laidOut[sorted[i]!.id] = {
-          x: clamp(seatSnap(x, gridSize), minX, maxX),
-          y: clamp(seatSnap(y, gridSize), minY, maxY),
-        }
-      }
+    for (let i = 0; i < k; i++) {
+      const p = picked[i]!
+      laidOut[sorted[i]!.id] = { x: clamp(p.x, minX, maxX), y: clamp(p.y, minY, maxY) }
     }
     if (remain > 0) {
       const wall: 'left' | 'right' | 'top' | 'bottom' =
@@ -402,6 +454,30 @@ const layoutSeatsOnTables = (args: {
     return { ...s, x: safe.x, y: safe.y }
   })
 
+  const circleIntersectsRect = (seat: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number }) => {
+    const cx = clamp(seat.x, rect.x, rect.x + rect.width)
+    const cy = clamp(seat.y, rect.y, rect.y + rect.height)
+    return dist2(seat, { x: cx, y: cy }) < seatRadius * seatRadius
+  }
+
+  const pushOutsideTables = (seat: { x: number; y: number }) => {
+    let out = { ...seat }
+    for (let iter = 0; iter < 20; iter++) {
+      const hit = tables.find((t) => circleIntersectsRect(out, t))
+      if (!hit) break
+      const tc = { x: hit.x + hit.width / 2, y: hit.y + hit.height / 2 }
+      const dx = out.x - tc.x
+      const dy = out.y - tc.y
+      const len = Math.hypot(dx, dy) || 1
+      const nx = dx / len
+      const ny = dy / len
+      out = { x: out.x + nx * (gridSize / 2), y: out.y + ny * (gridSize / 2) }
+      out.x = clamp(seatSnap(out.x, gridSize), minX, maxX)
+      out.y = clamp(seatSnap(out.y, gridSize), minY, maxY)
+    }
+    return out
+  }
+
   for (let iter = 0; iter < 40; iter++) {
     let moved = false
     const nudge = Math.max(1, Math.round(gridSize / 2))
@@ -429,7 +505,8 @@ const layoutSeatsOnTables = (args: {
   }
 
   return outSeats.map((s) => {
-    const safe = avoidDoor({ x: s.x, y: s.y })
+    const pushed = pushOutsideTables({ x: s.x, y: s.y })
+    const safe = avoidDoor(pushed)
     return { ...s, x: safe.x, y: safe.y }
   })
 }
@@ -717,39 +794,62 @@ export const buildLayoutScene = (args: {
     const seatRadius = seatDiameter / 2
     const tableGap = metersToPx(defaultVenueRules.seat.tableGapM)
     const rowOffset0 = tableGap + seatRadius
+    const seatPitch = seatDiameter + metersToPx(defaultVenueRules.seat.minGapM)
     const out: Seat[] = []
     let k = 1
     for (const a of alloc) {
       const n = a.n
       if (n <= 0) continue
       const t = a.t
-      const perEdge = Math.ceil(n / 4)
-      const edges: Array<'top' | 'right' | 'bottom' | 'left'> = ['top', 'right', 'bottom', 'left']
-      let idx = 0
-      for (const e of edges) {
-        const m = Math.min(perEdge, n - idx)
-        if (m <= 0) break
-        for (let i = 0; i < m; i++) {
-          if (e === 'top') {
-            const x = t.x + ((i + 1) * t.width) / (m + 1)
-            out.push({ id: `p${k++}`, x: seatSnap(x, gridSize), y: seatSnap(t.y - rowOffset0, gridSize) })
-          } else if (e === 'bottom') {
-            const x = t.x + ((i + 1) * t.width) / (m + 1)
-            out.push({ id: `p${k++}`, x: seatSnap(x, gridSize), y: seatSnap(t.y + t.height + rowOffset0, gridSize) })
-          } else if (e === 'left') {
-            const y = t.y + ((i + 1) * t.height) / (m + 1)
-            out.push({ id: `p${k++}`, x: seatSnap(t.x - rowOffset0, gridSize), y: seatSnap(y, gridSize) })
-          } else {
-            const y = t.y + ((i + 1) * t.height) / (m + 1)
-            out.push({ id: `p${k++}`, x: seatSnap(t.x + t.width + rowOffset0, gridSize), y: seatSnap(y, gridSize) })
-          }
+
+      const tc = elementCenter(t)
+      const sc = screen ? elementCenter(screen) : { x: tc.x, y: room.y }
+      const facingLocal = { x: sc.x - tc.x, y: sc.y - tc.y }
+      const dLeft = Math.abs(sc.x - t.x)
+      const dRight = Math.abs(sc.x - (t.x + t.width))
+      const dTop = Math.abs(sc.y - t.y)
+      const dBottom = Math.abs(sc.y - (t.y + t.height))
+      const startEdge: TableEdge = [
+        { e: 'left' as const, d: dLeft },
+        { e: 'right' as const, d: dRight },
+        { e: 'top' as const, d: dTop },
+        { e: 'bottom' as const, d: dBottom },
+      ].sort((a, b) => a.d - b.d)[0]!.e
+      const { leftEdge, rightEdge } = leftRightEdgesFromFacing(facingLocal)
+
+      const edgeSeq = [startEdge, oppositeEdge(startEdge), leftEdge, rightEdge].filter((v, i, arr) => arr.indexOf(v) === i)
+      const slotsByEdge = new Map<TableEdge, SeatSlot[]>()
+      for (const e of edgeSeq) {
+        const slots = buildTableEdgeSlots({ table: t, edge: e, seatPitch, rowOffset0, gridSize })
+        slotsByEdge.set(e, chooseSlotsOnEdge(slots, slots.length))
+      }
+      const cursor = new Map<TableEdge, number>()
+      const takeNext = (e: TableEdge) => {
+        const slots = slotsByEdge.get(e) ?? []
+        const i = cursor.get(e) ?? 0
+        if (i >= slots.length) return null
+        cursor.set(e, i + 1)
+        return slots[i]!
+      }
+
+      let placed = 0
+      while (placed < n) {
+        let progressed = false
+        for (const e of edgeSeq) {
+          if (placed >= n) break
+          const s0 = takeNext(e)
+          if (!s0) continue
+          out.push({ id: `p${k++}`, x: s0.x, y: s0.y })
+          placed++
+          progressed = true
         }
-        idx += m
+        if (!progressed) break
       }
     }
     while (out.length < count) out.push({ id: `p${k++}`, x: 0, y: 0 })
     return out.slice(0, count)
   }
+
 
   const seatsForLayout = rotatedSeats.length > 0 ? rotatedSeats : seatCount && seatCount > 0 ? seedSeats(seatCount) : []
 
